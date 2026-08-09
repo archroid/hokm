@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iranian Hokm - Online 4-Player Card Game</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700&family=Vazirmatn:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Background Canvas/Overlay -->
+  <div class="app-container">
+
+    <!-- TOP HEADER (Only in game / room) -->
+    <header id="game-header" class="game-header hidden">
+      <div class="header-left">
+        <div class="brand">
+          <i class="fa-solid me-2 fa-crown text-gold"></i>
+          <span>HOKM</span>
+        </div>
+        <div class="room-badge" id="room-code-badge" title="Click to copy invite link">
+          <span>ROOM: <strong id="display-room-code">----</strong></span>
+          <i class="fa-regular fa-copy copy-icon"></i>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <!-- Trump Suit Display -->
+        <div class="trump-card-display" id="trump-display">
+          <span class="trump-label">HOKM</span>
+          <span class="trump-icon" id="trump-icon-symbol">?</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- Scoreboard -->
+        <div class="scoreboard">
+          <div class="team-score team-us">
+            <span class="team-name">OUR TEAM</span>
+            <span class="match-pts" id="score-us">0</span>
+            <span class="tricks-pts" id="tricks-us">(0)</span>
+          </div>
+          <div class="vs-divider">:</div>
+          <div class="team-score team-them">
+            <span class="team-name">THEIR TEAM</span>
+            <span class="match-pts" id="score-them">0</span>
+            <span class="tricks-pts" id="tricks-them">(0)</span>
+          </div>
+        </div>
+        <button id="sound-toggle-btn" class="icon-btn" title="Toggle Sound">
+          <i class="fa-solid fa-volume-high" id="sound-icon"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN VIEW CONTAINER -->
+    <main class="main-content">
+
+      <!-- VIEW 1: WELCOME & LOBBY ENTRANCE -->
+      <section id="view-landing" class="view-panel active">
+        <div class="landing-card glass-panel">
+          <div class="landing-header">
+            <div class="crown-logo">👑</div>
+            <h1>HOKM ONLINE</h1>
+            <p>Iranian Trick-Taking Card Game with Friends</p>
+          </div>
+
+          <div class="form-group">
+            <label for="input-player-name"><i class="fa-solid fa-user me-2"></i> Your Name</label>
+            <input type="text" id="input-player-name" placeholder="Enter your name..." maxlength="15" autocomplete="off">
+          </div>
+
+          <div class="action-buttons">
+            <button id="btn-create-room" class="btn btn-gold btn-large">
+              <i class="fa-solid fa-plus me-2"></i> Create New Room
+            </button>
+            <div class="divider"><span>OR JOIN ROOM</span></div>
+            <div class="join-input-group">
+              <input type="text" id="input-room-code" placeholder="Enter 4-letter Code" maxlength="4" style="text-transform:uppercase;">
+              <button id="btn-join-room" class="btn btn-primary">
+                Join <i class="fa-solid fa-arrow-right ms-1"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 2: ROOM LOBBY (WAITING FOR 4 SEATS) -->
+      <section id="view-room-lobby" class="view-panel hidden">
+        <div class="lobby-card glass-panel">
+          <div class="lobby-header">
+            <h2>Room Lobby</h2>
+            <div class="room-share-box" id="share-link-box">
+              <span>Code: <strong id="lobby-code-display">---</strong></span>
+              <button class="btn btn-sm btn-outline" id="btn-copy-link"><i class="fa-solid fa-copy me-1"></i> Copy Link</button>
+            </div>
+          </div>
+
+          <p class="lobby-subtitle">Game starts when all 4 seats are occupied (You can add AI bots for open seats!).</p>
+
+          <div class="seats-grid">
+            <!-- Seat 0: Host (South) -->
+            <div class="seat-card team-a" id="lobby-seat-0">
+              <div class="seat-team-tag">Team 1 (South)</div>
+              <div class="seat-avatar"><i class="fa-solid fa-user-tie"></i></div>
+              <div class="seat-name" id="lobby-seat-0-name">Waiting...</div>
+              <div class="seat-action" id="lobby-seat-0-action"></div>
+            </div>
+
+            <!-- Seat 2: Partner (North) -->
+            <div class="seat-card team-a" id="lobby-seat-2">
+              <div class="seat-team-tag">Team 1 (North - Partner)</div>
+              <div class="seat-avatar"><i class="fa-solid fa-user"></i></div>
+              <div class="seat-name" id="lobby-seat-2-name">Waiting...</div>
+              <div class="seat-action" id="lobby-seat-2-action"></div>
+            </div>
+
+            <!-- Seat 1: Opponent 1 (East) -->
+            <div class="seat-card team-b" id="lobby-seat-1">
+              <div class="seat-team-tag">Team 2 (East)</div>
+              <div class="seat-avatar"><i class="fa-solid fa-user"></i></div>
+              <div class="seat-name" id="lobby-seat-1-name">Waiting...</div>
+              <div class="seat-action" id="lobby-seat-1-action"></div>
+            </div>
+
+            <!-- Seat 3: Opponent 2 (West) -->
+            <div class="seat-card team-b" id="lobby-seat-3">
+              <div class="seat-team-tag">Team 2 (West)</div>
+              <div class="seat-avatar"><i class="fa-solid fa-user"></i></div>
+              <div class="seat-name" id="lobby-seat-3-name">Waiting...</div>
+              <div class="seat-action" id="lobby-seat-3-action"></div>
+            </div>
+          </div>
+
+          <div class="lobby-footer">
+            <button id="btn-start-game" class="btn btn-gold btn-large" disabled>
+              <i class="fa-solid fa-play me-2"></i> Start Hokm Game
+            </button>
+            <div id="host-start-tip" class="start-tip text-muted">Only the host can start the game.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 3: HOKM GAME TABLE -->
+      <section id="view-game-table" class="view-panel hidden">
+        <div class="table-container">
+          <!-- The Circular / Oval Poker Table Felt -->
+          <div class="poker-table">
+
+            <!-- Center Table Status / Status Banner -->
+            <div class="table-status-banner" id="table-status-msg">
+              Waiting for players...
+            </div>
+
+            <!-- Played Cards Spot in Center -->
+            <div class="played-cards-area">
+              <div class="played-card-slot slot-top" id="played-slot-top"></div>
+              <div class="played-card-slot slot-bottom" id="played-slot-bottom"></div>
+              <div class="played-card-slot slot-left" id="played-slot-left"></div>
+              <div class="played-card-slot slot-right" id="played-slot-right"></div>
+            </div>
+
+            <!-- PLAYER SEAT 0: TOP (Partner) -->
+            <div class="player-seat seat-position-top" id="player-seat-top">
+              <div class="seat-badge">
+                <span class="hakem-crown hidden" id="crown-top"><i class="fa-solid fa-crown"></i></span>
+                <span class="player-name" id="name-top">Partner</span>
+                <span class="card-count-pill" id="cards-top">13</span>
+              </div>
+              <div class="turn-indicator"></div>
+            </div>
+
+            <!-- PLAYER SEAT 1: LEFT (Opponent West) -->
+            <div class="player-seat seat-position-left" id="player-seat-left">
+              <div class="seat-badge">
+                <span class="hakem-crown hidden" id="crown-left"><i class="fa-solid fa-crown"></i></span>
+                <span class="player-name" id="name-left">West</span>
+                <span class="card-count-pill" id="cards-left">13</span>
+              </div>
+              <div class="turn-indicator"></div>
+            </div>
+
+            <!-- PLAYER SEAT 2: RIGHT (Opponent East) -->
+            <div class="player-seat seat-position-right" id="player-seat-right">
+              <div class="seat-badge">
+                <span class="hakem-crown hidden" id="crown-right"><i class="fa-solid fa-crown"></i></span>
+                <span class="player-name" id="name-right">East</span>
+                <span class="card-count-pill" id="cards-right">13</span>
+              </div>
+              <div class="turn-indicator"></div>
+            </div>
+
+            <!-- PLAYER SEAT 3: BOTTOM (YOU) -->
+            <div class="player-seat seat-position-bottom" id="player-seat-bottom">
+              <div class="seat-badge">
+                <span class="hakem-crown hidden" id="crown-bottom"><i class="fa-solid fa-crown"></i></span>
+                <span class="player-name" id="name-bottom">You</span>
+              </div>
+              <div class="turn-indicator"></div>
+            </div>
+
+          </div>
+
+          <!-- BOTTOM PLAYER HAND CARDS -->
+          <div class="my-hand-wrapper">
+            <div class="my-hand-cards" id="my-hand-container">
+              <!-- Cards rendered dynamically -->
+            </div>
+          </div>
+
+          <!-- QUICK CHAT FLOATING BAR -->
+          <div class="quick-chat-bar">
+            <button class="chat-chip" data-msg="دست خوش! 👌">دست خوش! 👌</button>
+            <button class="chat-chip" data-msg="حکم چی داری؟ 🤔">حکم چی داری؟ 🤔</button>
+            <button class="chat-chip" data-msg="ایول! 🔥">ایول! 🔥</button>
+            <button class="chat-chip" data-msg="دمت گرم 👏">دمت گرم 👏</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- MODAL 1: HAKEM TRUMP SELECTION MODAL -->
+  <div id="modal-trump-select" class="modal-overlay hidden">
+    <div class="modal-card glass-panel text-center pulse-glow">
+      <div class="modal-header">
+        <i class="fa-solid fa-crown text-gold fa-3x mb-2"></i>
+        <h2>YOU ARE THE HAKEM!</h2>
+        <p>Choose the Trump Suit (Hokm) for this round based on your first 5 cards:</p>
+      </div>
+
+      <div class="suit-choices-grid">
+        <button class="suit-btn suit-spade" data-suit="S">
+          <span class="suit-symbol">♠</span>
+          <span class="suit-name">Spades (خاج/پیک)</span>
+        </button>
+        <button class="suit-btn suit-heart" data-suit="H">
+          <span class="suit-symbol">♥</span>
+          <span class="suit-name">Hearts (دل)</span>
+        </button>
+        <button class="suit-btn suit-diamond" data-suit="D">
+          <span class="suit-symbol">♦</span>
+          <span class="suit-name">Diamonds (خشت)</span>
+        </button>
+        <button class="suit-btn suit-club" data-suit="C">
+          <span class="suit-symbol">♣</span>
+          <span class="suit-name">Clubs (گشنیز)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: ROUND OVER MODAL -->
+  <div id="modal-round-over" class="modal-overlay hidden">
+    <div class="modal-card glass-panel text-center">
+      <h2 id="round-result-title">ROUND WON!</h2>
+      <div class="result-badge" id="round-result-badge">KOT! +2 Points</div>
+      <p id="round-result-desc" class="mt-3">Team 1 won 7 tricks to 0.</p>
+      <div class="spinner-border text-gold mt-4" role="status">
+        <span class="visually-hidden">Loading next round...</span>
+      </div>
+      <p class="text-muted small mt-2">Dealing next round in a few seconds...</p>
+    </div>
+  </div>
+
+  <!-- MODAL 3: GAME OVER / MATCH WINNER MODAL -->
+  <div id="modal-game-over" class="modal-overlay hidden">
+    <div class="modal-card glass-panel text-center trophy-card">
+      <div class="trophy-icon">🏆</div>
+      <h1 id="game-over-title">VICTORY!</h1>
+      <p id="game-over-desc">Team 1 won the match 7 - 3!</p>
+      <button class="btn btn-gold btn-large mt-4" onclick="location.reload()">
+        <i class="fa-solid fa-rotate-right me-2"></i> Play Again
+      </button>
+    </div>
+  </div>
+
+  <!-- CHAT BUBBLE POPUP CONTAINER -->
+  <div id="chat-popups-container"></div>
+
+  <!-- Socket.io & Scripts -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/sound.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
