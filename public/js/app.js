@@ -1,19 +1,33 @@
 /**
- * Hokm Online Frontend Application Logic
+ * Hokm Online Frontend Application Logic with User Accounts & Reconnection Support
  */
 
 document.addEventListener('DOMContentLoaded', () => {
   const socket = io();
 
   // State variables
-  let currentRoomId = null;
+  let currentRoomId = localStorage.getItem('hokm_room_id') || null;
   let mySeatIndex = 0;
   let isHost = false;
   let gameState = null;
-  let playerName = localStorage.getItem('hokm_player_name') || '';
+  let sessionToken = localStorage.getItem('hokm_session_token') || '';
+  let currentUser = localStorage.getItem('hokm_user_name') || '';
+  let authMode = 'login'; // 'login' or 'register'
 
-  // Elements
-  const inputPlayerName = document.getElementById('input-player-name');
+  // Auth Elements
+  const authSection = document.getElementById('auth-section');
+  const roomActionsSection = document.getElementById('room-actions-section');
+  const tabLogin = document.getElementById('tab-login');
+  const tabRegister = document.getElementById('tab-register');
+  const inputUsername = document.getElementById('input-username');
+  const inputPassword = document.getElementById('input-password');
+  const btnSubmitAuth = document.getElementById('btn-submit-auth');
+  const authAlert = document.getElementById('auth-alert');
+  const loggedUserDisplay = document.getElementById('logged-user-display');
+  const headerUserName = document.getElementById('header-user-name');
+  const btnLogout = document.getElementById('btn-logout');
+
+  // Lobby & Room Elements
   const inputRoomCode = document.getElementById('input-room-code');
   const btnCreateRoom = document.getElementById('btn-create-room');
   const btnJoinRoom = document.getElementById('btn-join-room');
@@ -43,47 +57,172 @@ document.addEventListener('DOMContentLoaded', () => {
   const myHandContainer = document.getElementById('my-hand-container');
   const tableStatusMsg = document.getElementById('table-status-msg');
 
-  // Pre-fill saved name
-  if (playerName) {
-    inputPlayerName.value = playerName;
-  }
-
   // Check URL query parameters for auto-join room code (e.g. ?room=ABCD)
   const urlParams = new URLSearchParams(window.location.search);
   const roomParam = urlParams.get('room');
   if (roomParam) {
     inputRoomCode.value = roomParam.toUpperCase();
+    currentRoomId = roomParam.toUpperCase();
+  }
+
+  // --- AUTHENTICATION HANDLERS ---
+  tabLogin.addEventListener('click', () => switchAuthTab('login'));
+  tabRegister.addEventListener('click', () => switchAuthTab('register'));
+
+  function switchAuthTab(mode) {
+    authMode = mode;
+    hideAuthAlert();
+    if (mode === 'login') {
+      tabLogin.classList.add('active');
+      tabRegister.classList.remove('active');
+      btnSubmitAuth.innerHTML = `<i class="fa-solid fa-right-to-bracket me-2"></i> Login to Play`;
+    } else {
+      tabRegister.classList.add('active');
+      tabLogin.classList.remove('active');
+      btnSubmitAuth.innerHTML = `<i class="fa-solid fa-user-plus me-2"></i> Create Account`;
+    }
+  }
+
+  btnSubmitAuth.addEventListener('click', handleAuthSubmit);
+  inputPassword.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') handleAuthSubmit();
+  });
+
+  function handleAuthSubmit() {
+    const username = inputUsername.value.trim();
+    const password = inputPassword.value;
+
+    if (!username || !password) {
+      showAuthAlert('Please enter both username and password.', 'error');
+      return;
+    }
+
+    const eventName = authMode === 'login' ? 'auth_login' : 'auth_register';
+
+    btnSubmitAuth.disabled = true;
+    socket.emit(eventName, { username, password }, (res) => {
+      btnSubmitAuth.disabled = false;
+      if (res && res.success) {
+        onAuthSuccess(res.token, res.username);
+      } else {
+        showAuthAlert(res ? res.message : 'Authentication failed.', 'error');
+      }
+    });
+  }
+
+  function onAuthSuccess(token, username) {
+    sessionToken = token;
+    currentUser = username;
+    localStorage.setItem('hokm_session_token', token);
+    localStorage.setItem('hokm_user_name', username);
+
+    loggedUserDisplay.textContent = username;
+    headerUserName.textContent = username;
+
+    authSection.classList.add('hidden');
+    roomActionsSection.classList.remove('hidden');
+    hideAuthAlert();
+
+    // Auto attempt room reconnect if room ID exists
+    if (currentRoomId) {
+      attemptRoomReconnect(currentRoomId);
+    }
+  }
+
+  btnLogout.addEventListener('click', () => {
+    sessionToken = '';
+    currentUser = '';
+    currentRoomId = null;
+    localStorage.removeItem('hokm_session_token');
+    localStorage.removeItem('hokm_user_name');
+    localStorage.removeItem('hokm_room_id');
+
+    headerUserName.textContent = 'Player';
+    roomActionsSection.classList.add('hidden');
+    authSection.classList.remove('hidden');
+    inputPassword.value = '';
+    showView('view-landing');
+  });
+
+  function showAuthAlert(msg, type = 'error') {
+    authAlert.textContent = msg;
+    authAlert.className = `auth-alert ${type}`;
+    authAlert.classList.remove('hidden');
+  }
+
+  function hideAuthAlert() {
+    authAlert.classList.add('hidden');
+  }
+
+  // Auto-verify session on startup
+  if (sessionToken) {
+    socket.emit('auth_verify_session', { token: sessionToken }, (res) => {
+      if (res && res.valid) {
+        onAuthSuccess(sessionToken, res.username);
+      } else {
+        // Invalid session token, clear
+        sessionToken = '';
+        localStorage.removeItem('hokm_session_token');
+      }
+    });
+  }
+
+  // Socket reconnect listener
+  socket.on('connect', () => {
+    if (sessionToken && currentRoomId) {
+      attemptRoomReconnect(currentRoomId);
+    }
+  });
+
+  function attemptRoomReconnect(roomId) {
+    if (!sessionToken) return;
+    socket.emit('reconnect_room', { token: sessionToken, roomId }, (res) => {
+      if (res && res.success) {
+        currentRoomId = res.roomId;
+        mySeatIndex = res.seatIndex;
+        updateUrlRoomCode(currentRoomId);
+        saveRoomId(currentRoomId);
+      }
+    });
   }
 
   // --- LOBBY ACTIONS ---
   btnCreateRoom.addEventListener('click', () => {
-    const name = inputPlayerName.value.trim() || 'Player';
-    savePlayerName(name);
+    if (!sessionToken) {
+      alert('Please login or create an account first.');
+      return;
+    }
 
-    socket.emit('create_room', { playerName: name }, (res) => {
+    socket.emit('create_room', { token: sessionToken }, (res) => {
       if (res.success) {
         currentRoomId = res.roomId;
         mySeatIndex = res.seatIndex;
         isHost = true;
+        saveRoomId(currentRoomId);
         updateUrlRoomCode(currentRoomId);
         showView('view-room-lobby');
+      } else {
+        alert(res.message || 'Could not create room.');
       }
     });
   });
 
   btnJoinRoom.addEventListener('click', () => {
-    const name = inputPlayerName.value.trim() || 'Player';
+    if (!sessionToken) {
+      alert('Please login or create an account first.');
+      return;
+    }
     const code = inputRoomCode.value.trim().toUpperCase();
     if (!code) {
       alert('Please enter a valid 4-letter room code.');
       return;
     }
-    savePlayerName(name);
 
-    socket.emit('join_room', { roomId: code, playerName: name }, (res) => {
+    socket.emit('join_room', { roomId: code, token: sessionToken }, (res) => {
       if (res.success) {
         currentRoomId = res.roomId;
         mySeatIndex = res.seatIndex;
+        saveRoomId(currentRoomId);
         updateUrlRoomCode(currentRoomId);
         showView('view-room-lobby');
       } else {
@@ -92,9 +231,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  function savePlayerName(name) {
-    playerName = name;
-    localStorage.setItem('hokm_player_name', name);
+  function saveRoomId(roomId) {
+    localStorage.setItem('hokm_room_id', roomId);
   }
 
   function updateUrlRoomCode(code) {
@@ -125,6 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
     mySeatIndex = state.mySeat;
     isHost = state.isHost;
     currentRoomId = state.roomId;
+    saveRoomId(currentRoomId);
 
     displayRoomCode.textContent = currentRoomId;
     lobbyCodeDisplay.textContent = currentRoomId;
@@ -155,12 +294,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if (seatData) {
         filledCount++;
         cardEl.classList.add('filled');
-        nameEl.textContent = seatData.name + (seatData.isBot ? ' 🤖' : '');
+
+        const offlineSuffix = seatData.connected === false ? ' ⚠️ (Offline)' : '';
+        nameEl.textContent = seatData.name + (seatData.isBot ? ' 🤖' : '') + offlineSuffix;
 
         if (isHost && s !== 0) {
           actionEl.innerHTML = `<button class="btn btn-sm btn-outline text-muted" onclick="removeSeat(${s})"><i class="fa-solid fa-user-minus"></i> Remove</button>`;
         } else {
-          actionEl.innerHTML = `<span class="badge text-gold"><i class="fa-solid fa-check me-1"></i> Ready</span>`;
+          actionEl.innerHTML = seatData.connected === false
+            ? `<span class="badge text-danger"><i class="fa-solid fa-wifi-slash me-1"></i> Disconnected</span>`
+            : `<span class="badge text-gold"><i class="fa-solid fa-check me-1"></i> Ready</span>`;
         }
       } else {
         cardEl.classList.remove('filled');
@@ -214,10 +357,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const nameEl = document.getElementById(`name-${pos}`);
       const crownEl = document.getElementById(`crown-${pos}`);
       const cardsEl = document.getElementById(`cards-${pos}`);
+      const offlineEl = document.getElementById(`offline-${pos}`);
 
       if (seatInfo) {
         nameEl.textContent = seatInfo.name + (seatInfo.isBot ? ' 🤖' : '');
         if (cardsEl) cardsEl.textContent = seatInfo.cardCount;
+
+        if (offlineEl) {
+          if (seatInfo.connected === false && !seatInfo.isBot) {
+            offlineEl.classList.remove('hidden');
+          } else {
+            offlineEl.classList.add('hidden');
+          }
+        }
       }
 
       if (crownEl) {
@@ -261,7 +413,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Render Hand
     const isMyTurn = state.currentTurn === mySeatIndex && state.state === 'PLAYING' && state.currentTrick.length < 4;
-    renderHandCards(state.hand, state.validCardIds || [], isMyTurn);
+    renderHandCards(state.hand, state.validCardIds || [], isMyTurn, state.state);
 
     // Update Status Banner
     updateStatusBanner(state);
@@ -376,8 +528,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const hakemName = state.seats[state.hakemSeat] ? state.seats[state.hakemSeat].name : 'Hakem';
       tableStatusMsg.textContent = `${hakemName} is choosing Trump (Hokm)...`;
     } else if (state.state === 'PLAYING') {
-      const turnName = state.seats[state.currentTurn] ? state.seats[state.currentTurn].name : 'Player';
-      tableStatusMsg.textContent = state.currentTurn === mySeatIndex ? '⭐ IT IS YOUR TURN!' : `Waiting for ${turnName}...`;
+      const turnSeat = state.seats[state.currentTurn];
+      const turnName = turnSeat ? turnSeat.name : 'Player';
+      if (state.currentTurn === mySeatIndex) {
+        tableStatusMsg.textContent = '⭐ IT IS YOUR TURN!';
+      } else if (turnSeat && turnSeat.connected === false) {
+        tableStatusMsg.textContent = `Waiting for ${turnName} (Disconnected)...`;
+      } else {
+        tableStatusMsg.textContent = `Waiting for ${turnName}...`;
+      }
     } else if (state.state === 'ROUND_OVER') {
       tableStatusMsg.textContent = 'Round Complete!';
     } else if (state.state === 'GAME_OVER') {

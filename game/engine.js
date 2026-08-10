@@ -400,7 +400,9 @@ class HokmGame {
       seats: this.seats.map((s, idx) => ({
         seatIndex: idx,
         name: s ? s.name : 'Empty',
+        username: s ? (s.username || s.name) : null,
         isBot: s ? s.isBot : false,
+        connected: s ? (s.connected !== false) : false,
         id: s ? s.id : null,
         cardCount: this.hands[idx] ? this.hands[idx].length : 0
       })),

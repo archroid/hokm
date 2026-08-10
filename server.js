@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const { RoomManager } = require('./game/roomManager');
+const authManager = require('./game/authManager');
 
 const app = express();
 const server = http.createServer(app);
@@ -21,14 +22,50 @@ const roomManager = new RoomManager(io);
 io.on('connection', (socket) => {
   console.log(`[Socket Connected] ID: ${socket.id}`);
 
+  // Authentication actions
+  socket.on('auth_register', ({ username, password }, callback) => {
+    const res = authManager.register(username, password);
+    if (typeof callback === 'function') callback(res);
+  });
+
+  socket.on('auth_login', ({ username, password }, callback) => {
+    const res = authManager.login(username, password);
+    if (typeof callback === 'function') callback(res);
+  });
+
+  socket.on('auth_verify_session', ({ token }, callback) => {
+    const res = authManager.verifySession(token);
+    if (typeof callback === 'function') callback(res);
+  });
+
   // Lobby actions
-  socket.on('create_room', ({ playerName }, callback) => {
-    const res = roomManager.createRoom(socket, playerName);
+  socket.on('create_room', ({ token }, callback) => {
+    const auth = authManager.verifySession(token);
+    if (!auth.valid) {
+      if (typeof callback === 'function') callback({ success: false, message: 'Account required to play. Please login first.' });
+      return;
+    }
+    const res = roomManager.createRoom(socket, auth.username);
     if (typeof callback === 'function') callback({ success: true, ...res });
   });
 
-  socket.on('join_room', ({ roomId, playerName }, callback) => {
-    const res = roomManager.joinRoom(socket, roomId, playerName);
+  socket.on('join_room', ({ roomId, token }, callback) => {
+    const auth = authManager.verifySession(token);
+    if (!auth.valid) {
+      if (typeof callback === 'function') callback({ success: false, message: 'Account required to play. Please login first.' });
+      return;
+    }
+    const res = roomManager.joinRoom(socket, roomId, auth.username);
+    if (typeof callback === 'function') callback(res);
+  });
+
+  socket.on('reconnect_room', ({ token, roomId }, callback) => {
+    const auth = authManager.verifySession(token);
+    if (!auth.valid) {
+      if (typeof callback === 'function') callback({ success: false, message: 'Authentication failed' });
+      return;
+    }
+    const res = roomManager.reconnectUser(socket, auth.username, roomId);
     if (typeof callback === 'function') callback(res);
   });
 

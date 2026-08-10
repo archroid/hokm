@@ -3,7 +3,8 @@ const { HokmGame } = require('./engine');
 class RoomManager {
   constructor(io) {
     this.io = io;
-    this.rooms = new Map(); // roomId -> { game, hostId, socketSeatMap }
+    this.rooms = new Map(); // roomId -> { roomId, game, hostId, hostUsername, playerSockets: Map(socketId -> seatIndex) }
+    this.userRoomMap = new Map(); // usernameKey -> { roomId, seatIndex }
   }
 
   generateRoomCode() {
@@ -18,14 +19,24 @@ class RoomManager {
     return code;
   }
 
-  createRoom(hostSocket, hostName) {
+  createRoom(hostSocket, username) {
     const roomId = this.generateRoomCode();
     const game = new HokmGame(roomId);
+    const userKey = username.toLowerCase();
+
+    // Clean up old userRoomMap if player was in another room
+    if (this.userRoomMap.has(userKey)) {
+      const old = this.userRoomMap.get(userKey);
+      if (old.roomId !== roomId) {
+        this.leaveRoomInternal(username, old.roomId);
+      }
+    }
 
     // Host takes seat 0 (South)
     game.seats[0] = {
       id: hostSocket.id,
-      name: hostName || 'Player 1',
+      name: username,
+      username: username,
       isBot: false,
       connected: true
     };
@@ -34,33 +45,44 @@ class RoomManager {
       roomId,
       game,
       hostId: hostSocket.id,
+      hostUsername: username,
       playerSockets: new Map() // socketId -> seatIndex
     };
 
     roomData.playerSockets.set(hostSocket.id, 0);
     this.rooms.set(roomId, roomData);
-    hostSocket.join(roomId);
+    this.userRoomMap.set(userKey, { roomId, seatIndex: 0 });
 
+    hostSocket.join(roomId);
     this.broadcastState(roomId);
     return { roomId, seatIndex: 0 };
   }
 
-  joinRoom(socket, roomId, playerName) {
+  joinRoom(socket, roomId, username) {
     roomId = roomId.toUpperCase().trim();
     if (!this.rooms.has(roomId)) {
       return { success: false, message: 'Room not found' };
     }
 
+    const userKey = username.toLowerCase();
     const roomData = this.rooms.get(roomId);
     const game = roomData.game;
 
-    // Check if already in room
+    // Check if user is already seated in this room (reconnection path)
+    if (this.userRoomMap.has(userKey)) {
+      const activeInfo = this.userRoomMap.get(userKey);
+      if (activeInfo.roomId === roomId) {
+        return this.reconnectUser(socket, username, roomId);
+      }
+    }
+
+    // Check if socket is already in room
     if (roomData.playerSockets.has(socket.id)) {
       const seat = roomData.playerSockets.get(socket.id);
       return { success: true, roomId, seatIndex: seat };
     }
 
-    // Find first empty seat or disconnected seat
+    // Find first empty seat
     let seatIndex = game.seats.findIndex(s => s === null);
     if (seatIndex === -1) {
       return { success: false, message: 'Room is full' };
@@ -68,16 +90,80 @@ class RoomManager {
 
     game.seats[seatIndex] = {
       id: socket.id,
-      name: playerName || `Player ${seatIndex + 1}`,
+      name: username,
+      username: username,
       isBot: false,
       connected: true
     };
 
     roomData.playerSockets.set(socket.id, seatIndex);
+    this.userRoomMap.set(userKey, { roomId, seatIndex });
     socket.join(roomId);
 
     this.broadcastState(roomId);
     return { success: true, roomId, seatIndex };
+  }
+
+  reconnectUser(socket, username, requestedRoomId) {
+    const userKey = username.toLowerCase();
+
+    // Check if user has an active room
+    if (!this.userRoomMap.has(userKey)) {
+      if (requestedRoomId && this.rooms.has(requestedRoomId)) {
+        // Try joining if room exists
+        return this.joinRoom(socket, requestedRoomId, username);
+      }
+      return { success: false, message: 'No active room found for user' };
+    }
+
+    const { roomId, seatIndex } = this.userRoomMap.get(userKey);
+    if (!this.rooms.has(roomId)) {
+      this.userRoomMap.delete(userKey);
+      return { success: false, message: 'Previous room no longer exists' };
+    }
+
+    const roomData = this.rooms.get(roomId);
+    const game = roomData.game;
+
+    // Clear old socket ID mapping for this seat if any
+    for (const [sId, sIdx] of roomData.playerSockets.entries()) {
+      if (sIdx === seatIndex) {
+        roomData.playerSockets.delete(sId);
+      }
+    }
+
+    // Rebind seat
+    game.seats[seatIndex].id = socket.id;
+    game.seats[seatIndex].connected = true;
+    game.seats[seatIndex].name = username;
+    game.seats[seatIndex].username = username;
+
+    roomData.playerSockets.set(socket.id, seatIndex);
+    if (roomData.hostUsername === username) {
+      roomData.hostId = socket.id;
+    }
+
+    socket.join(roomId);
+    this.broadcastState(roomId);
+
+    return { success: true, roomId, seatIndex, state: game.state, reconnected: true };
+  }
+
+  leaveRoomInternal(username, roomId) {
+    const userKey = username.toLowerCase();
+    this.userRoomMap.delete(userKey);
+    if (!this.rooms.has(roomId)) return;
+
+    const roomData = this.rooms.get(roomId);
+    const seatIndex = roomData.game.seats.findIndex(s => s && s.username && s.username.toLowerCase() === userKey);
+    if (seatIndex !== -1) {
+      const seat = roomData.game.seats[seatIndex];
+      if (seat) {
+        roomData.playerSockets.delete(seat.id);
+        roomData.game.seats[seatIndex] = null;
+      }
+    }
+    this.broadcastState(roomId);
   }
 
   addBot(hostSocket, roomId, seatIndex) {
@@ -94,6 +180,7 @@ class RoomManager {
       game.seats[seatIndex] = {
         id: `bot_${seatIndex}_${Date.now()}`,
         name: botName,
+        username: botName,
         isBot: true,
         connected: true
       };
@@ -114,8 +201,13 @@ class RoomManager {
     if (seatIndex >= 0 && seatIndex < 4 && seatIndex !== 0) { // Can't remove host (seat 0)
       const seat = game.seats[seatIndex];
       if (seat) {
-        if (!seat.isBot && roomData.playerSockets.has(seat.id)) {
-          roomData.playerSockets.delete(seat.id);
+        if (!seat.isBot) {
+          if (seat.username) {
+            this.userRoomMap.delete(seat.username.toLowerCase());
+          }
+          if (roomData.playerSockets.has(seat.id)) {
+            roomData.playerSockets.delete(seat.id);
+          }
         }
         game.seats[seatIndex] = null;
         this.broadcastState(roomId);
@@ -144,7 +236,7 @@ class RoomManager {
     game.startCutHakem();
     this.broadcastState(roomId);
 
-    // After 2.5 seconds, start first round (Trump selection)
+    // After 3 seconds, start first round (Trump selection)
     setTimeout(() => {
       game.startNewRound();
       this.broadcastState(roomId);
@@ -192,7 +284,7 @@ class RoomManager {
           this.checkBotTurn(roomId);
         } else if (game.state === 'ROUND_OVER') {
           this.broadcastState(roomId);
-          // Auto start next round after 5 seconds if game not over
+          // Auto start next round after 4.5 seconds if game not over
           setTimeout(() => {
             if (game.state === 'ROUND_OVER') {
               game.startNewRound();
@@ -301,16 +393,16 @@ class RoomManager {
           seat.connected = false;
         }
 
-        // If game in lobby, clean up empty human seat or replace with null
-        if (roomData.game.state === 'LOBBY') {
-          roomData.game.seats[seatIndex] = null;
-        }
-
         this.broadcastState(roomId);
 
-        // If host disconnected in lobby, transfer host or cleanup room if empty
+        // If all sockets in room are disconnected and game is in LOBBY, clean up room
         const activeSockets = roomData.playerSockets.size;
-        if (activeSockets === 0) {
+        if (activeSockets === 0 && roomData.game.state === 'LOBBY') {
+          for (const s of roomData.game.seats) {
+            if (s && s.username) {
+              this.userRoomMap.delete(s.username.toLowerCase());
+            }
+          }
           this.rooms.delete(roomId);
         }
         break;
@@ -328,8 +420,9 @@ class RoomManager {
       const socket = this.io.sockets.sockets.get(socketId);
       if (socket) {
         const state = game.getPublicState(seatIndex);
+        const seat = game.seats[seatIndex];
         state.mySeat = seatIndex;
-        state.isHost = (roomData.hostId === socketId);
+        state.isHost = (roomData.hostUsername && seat ? roomData.hostUsername === seat.username : roomData.hostId === socketId);
         socket.emit('game_state', state);
       }
     }

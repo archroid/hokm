@@ -54,6 +54,10 @@
             <span class="tricks-pts" id="tricks-them">(0)</span>
           </div>
         </div>
+        <div class="user-profile-badge" id="header-user-badge">
+          <i class="fa-solid fa-circle-user me-1 text-gold"></i>
+          <span id="header-user-name">Player</span>
+        </div>
         <button id="sound-toggle-btn" class="icon-btn" title="Toggle Sound">
           <i class="fa-solid fa-volume-high" id="sound-icon"></i>
         </button>
@@ -72,21 +76,50 @@
             <p>Iranian Trick-Taking Card Game with Friends</p>
           </div>
 
-          <div class="form-group">
-            <label for="input-player-name"><i class="fa-solid fa-user me-2"></i> Your Name</label>
-            <input type="text" id="input-player-name" placeholder="Enter your name..." maxlength="15" autocomplete="off">
+          <!-- AUTH SECTION (UNAUTHENTICATED) -->
+          <div id="auth-section">
+            <div class="auth-tabs">
+              <button class="auth-tab active" id="tab-login">Login</button>
+              <button class="auth-tab" id="tab-register">Register</button>
+            </div>
+
+            <div id="auth-alert" class="auth-alert hidden"></div>
+
+            <div class="form-group">
+              <label for="input-username"><i class="fa-solid fa-user me-2"></i> Username</label>
+              <input type="text" id="input-username" placeholder="Enter username..." maxlength="20" autocomplete="username">
+            </div>
+
+            <div class="form-group mt-3">
+              <label for="input-password"><i class="fa-solid fa-lock me-2"></i> Password</label>
+              <input type="password" id="input-password" placeholder="Enter password..." autocomplete="current-password">
+            </div>
+
+            <div class="auth-actions mt-4">
+              <button id="btn-submit-auth" class="btn btn-gold btn-large w-100">
+                <i class="fa-solid fa-right-to-bracket me-2"></i> Login to Play
+              </button>
+            </div>
           </div>
 
-          <div class="action-buttons">
-            <button id="btn-create-room" class="btn btn-gold btn-large">
-              <i class="fa-solid fa-plus me-2"></i> Create New Room
-            </button>
-            <div class="divider"><span>OR JOIN ROOM</span></div>
-            <div class="join-input-group">
-              <input type="text" id="input-room-code" placeholder="Enter 4-letter Code" maxlength="4" style="text-transform:uppercase;">
-              <button id="btn-join-room" class="btn btn-primary">
-                Join <i class="fa-solid fa-arrow-right ms-1"></i>
+          <!-- ROOM ACTIONS SECTION (AUTHENTICATED) -->
+          <div id="room-actions-section" class="hidden">
+            <div class="user-welcome-box">
+              <span>Logged in as <strong id="logged-user-display" class="text-gold">Player</strong></span>
+              <button id="btn-logout" class="btn btn-sm btn-outline ms-2"><i class="fa-solid fa-right-from-bracket me-1"></i> Logout</button>
+            </div>
+
+            <div class="action-buttons mt-4">
+              <button id="btn-create-room" class="btn btn-gold btn-large">
+                <i class="fa-solid fa-plus me-2"></i> Create New Room
               </button>
+              <div class="divider"><span>OR JOIN ROOM</span></div>
+              <div class="join-input-group">
+                <input type="text" id="input-room-code" placeholder="Enter 4-letter Code" maxlength="4" style="text-transform:uppercase;">
+                <button id="btn-join-room" class="btn btn-primary">
+                  Join <i class="fa-solid fa-arrow-right ms-1"></i>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -172,6 +205,7 @@
               <div class="seat-badge">
                 <span class="hakem-crown hidden" id="crown-top"><i class="fa-solid fa-crown"></i></span>
                 <span class="player-name" id="name-top">Partner</span>
+                <span class="offline-tag hidden" id="offline-top"><i class="fa-solid fa-wifi-slash"></i> Reconnecting</span>
                 <span class="card-count-pill" id="cards-top">13</span>
               </div>
               <div class="turn-indicator"></div>
@@ -182,6 +216,7 @@
               <div class="seat-badge">
                 <span class="hakem-crown hidden" id="crown-left"><i class="fa-solid fa-crown"></i></span>
                 <span class="player-name" id="name-left">West</span>
+                <span class="offline-tag hidden" id="offline-left"><i class="fa-solid fa-wifi-slash"></i> Reconnecting</span>
                 <span class="card-count-pill" id="cards-left">13</span>
               </div>
               <div class="turn-indicator"></div>
@@ -192,6 +227,7 @@
               <div class="seat-badge">
                 <span class="hakem-crown hidden" id="crown-right"><i class="fa-solid fa-crown"></i></span>
                 <span class="player-name" id="name-right">East</span>
+                <span class="offline-tag hidden" id="offline-right"><i class="fa-solid fa-wifi-slash"></i> Reconnecting</span>
                 <span class="card-count-pill" id="cards-right">13</span>
               </div>
               <div class="turn-indicator"></div>
@@ -202,6 +238,7 @@
               <div class="seat-badge">
                 <span class="hakem-crown hidden" id="crown-bottom"><i class="fa-solid fa-crown"></i></span>
                 <span class="player-name" id="name-bottom">You</span>
+                <span class="offline-tag hidden" id="offline-bottom"><i class="fa-solid fa-wifi-slash"></i> Reconnecting</span>
               </div>
               <div class="turn-indicator"></div>
             </div>
