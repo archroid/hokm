@@ -1,9 +1,10 @@
 const { HokmGame } = require('./engine');
+const { CoupGame } = require('./coupEngine');
 
 class RoomManager {
   constructor(io) {
     this.io = io;
-    this.rooms = new Map(); // roomId -> { roomId, game, hostId, hostUsername, playerSockets: Map(socketId -> seatIndex) }
+    this.rooms = new Map(); // roomId -> { roomId, game, gameType, hostId, hostUsername, playerSockets: Map(socketId -> seatIndex) }
     this.userRoomMap = new Map(); // usernameKey -> { roomId, seatIndex }
   }
 
@@ -19,9 +20,10 @@ class RoomManager {
     return code;
   }
 
-  createRoom(hostSocket, username) {
+  createRoom(hostSocket, username, gameType = 'HOKM') {
     const roomId = this.generateRoomCode();
-    const game = new HokmGame(roomId);
+    const type = gameType.toUpperCase() === 'COUP' ? 'COUP' : 'HOKM';
+    const game = type === 'COUP' ? new CoupGame(roomId, 6) : new HokmGame(roomId);
     const userKey = username.toLowerCase();
 
     // Clean up old userRoomMap if player was in another room
@@ -32,7 +34,7 @@ class RoomManager {
       }
     }
 
-    // Host takes seat 0 (South)
+    // Host takes seat 0
     game.seats[0] = {
       id: hostSocket.id,
       name: username,
@@ -44,6 +46,7 @@ class RoomManager {
     const roomData = {
       roomId,
       game,
+      gameType: type,
       hostId: hostSocket.id,
       hostUsername: username,
       playerSockets: new Map() // socketId -> seatIndex
@@ -55,7 +58,7 @@ class RoomManager {
 
     hostSocket.join(roomId);
     this.broadcastState(roomId);
-    return { roomId, seatIndex: 0 };
+    return { roomId, seatIndex: 0, gameType: type };
   }
 
   joinRoom(socket, roomId, username) {
@@ -79,7 +82,7 @@ class RoomManager {
     // Check if socket is already in room
     if (roomData.playerSockets.has(socket.id)) {
       const seat = roomData.playerSockets.get(socket.id);
-      return { success: true, roomId, seatIndex: seat };
+      return { success: true, roomId, seatIndex: seat, gameType: roomData.gameType };
     }
 
     // Find first empty seat
@@ -101,16 +104,14 @@ class RoomManager {
     socket.join(roomId);
 
     this.broadcastState(roomId);
-    return { success: true, roomId, seatIndex };
+    return { success: true, roomId, seatIndex, gameType: roomData.gameType };
   }
 
   reconnectUser(socket, username, requestedRoomId) {
     const userKey = username.toLowerCase();
 
-    // Check if user has an active room
     if (!this.userRoomMap.has(userKey)) {
       if (requestedRoomId && this.rooms.has(requestedRoomId)) {
-        // Try joining if room exists
         return this.joinRoom(socket, requestedRoomId, username);
       }
       return { success: false, message: 'No active room found for user' };
@@ -125,7 +126,7 @@ class RoomManager {
     const roomData = this.rooms.get(roomId);
     const game = roomData.game;
 
-    // Clear old socket ID mapping for this seat if any
+    // Clear old socket ID mapping for this seat
     for (const [sId, sIdx] of roomData.playerSockets.entries()) {
       if (sIdx === seatIndex) {
         roomData.playerSockets.delete(sId);
@@ -146,7 +147,7 @@ class RoomManager {
     socket.join(roomId);
     this.broadcastState(roomId);
 
-    return { success: true, roomId, seatIndex, state: game.state, reconnected: true };
+    return { success: true, roomId, seatIndex, gameType: roomData.gameType, state: game.state, reconnected: true };
   }
 
   leaveRoomInternal(username, roomId) {
@@ -166,6 +167,44 @@ class RoomManager {
     this.broadcastState(roomId);
   }
 
+  leaveRoom(socket, roomId) {
+    if (!roomId || !this.rooms.has(roomId)) return { success: false, message: 'Room not found' };
+    const roomData = this.rooms.get(roomId);
+    const seatIndex = roomData.playerSockets.get(socket.id);
+    if (seatIndex === undefined) return { success: false, message: 'Not in room' };
+
+    const seat = roomData.game.seats[seatIndex];
+    if (seat && seat.username) {
+      this.userRoomMap.delete(seat.username.toLowerCase());
+    }
+
+    roomData.playerSockets.delete(socket.id);
+    socket.leave(roomId);
+
+    if (roomData.game.state === 'LOBBY') {
+      roomData.game.seats[seatIndex] = null;
+    } else {
+      // In active game, convert player to Bot so remaining players can finish!
+      roomData.game.seats[seatIndex] = {
+        id: `bot_${seatIndex}_${Date.now()}`,
+        name: `${seat ? seat.name : 'Player'} (Bot)`,
+        username: `${seat ? seat.name : 'Player'} (Bot)`,
+        isBot: true,
+        connected: true
+      };
+    }
+
+    this.broadcastState(roomId);
+    this.checkBotTurn(roomId);
+
+    // Clean up empty room if no human sockets remain
+    if (roomData.playerSockets.size === 0) {
+      this.rooms.delete(roomId);
+    }
+
+    return { success: true };
+  }
+
   addBot(hostSocket, roomId, seatIndex) {
     if (!this.rooms.has(roomId)) return false;
     const roomData = this.rooms.get(roomId);
@@ -174,8 +213,9 @@ class RoomManager {
     const game = roomData.game;
     if (game.state !== 'LOBBY') return false;
 
-    if (seatIndex >= 0 && seatIndex < 4 && game.seats[seatIndex] === null) {
-      const botNames = ['Hassan Bot', 'Reza Bot', 'Parvin Bot', 'Sara Bot', 'Ali Bot'];
+    const maxSeats = roomData.gameType === 'COUP' ? 6 : 4;
+    if (seatIndex >= 0 && seatIndex < maxSeats && game.seats[seatIndex] === null) {
+      const botNames = ['Hassan Bot', 'Reza Bot', 'Parvin Bot', 'Sara Bot', 'Ali Bot', 'Nima Bot'];
       const botName = botNames[seatIndex % botNames.length];
       game.seats[seatIndex] = {
         id: `bot_${seatIndex}_${Date.now()}`,
@@ -198,7 +238,8 @@ class RoomManager {
     const game = roomData.game;
     if (game.state !== 'LOBBY') return false;
 
-    if (seatIndex >= 0 && seatIndex < 4 && seatIndex !== 0) { // Can't remove host (seat 0)
+    const maxSeats = roomData.gameType === 'COUP' ? 6 : 4;
+    if (seatIndex >= 0 && seatIndex < maxSeats && seatIndex !== 0) { // Can't remove host
       const seat = game.seats[seatIndex];
       if (seat) {
         if (!seat.isBot) {
@@ -226,26 +267,110 @@ class RoomManager {
     }
 
     const game = roomData.game;
-    // Check if all 4 seats are filled
-    const filledCount = game.seats.filter(s => s !== null).length;
-    if (filledCount < 4) {
-      return { success: false, message: 'Need 4 players to start! Add AI bots for open seats.' };
-    }
+    const botNames = ['Hassan Bot', 'Reza Bot', 'Parvin Bot', 'Sara Bot', 'Ali Bot', 'Nima Bot'];
 
-    // Step 1: Cut for Hakem
-    game.startCutHakem();
-    this.broadcastState(roomId);
-
-    // After 3 seconds, start first round (Trump selection)
-    setTimeout(() => {
-      game.startNewRound();
+    if (roomData.gameType === 'COUP') {
+      const filledCount = game.seats.filter(s => s !== null).length;
+      if (filledCount < 2) {
+        // Auto add bot to seat 1 if solo player starting Coup
+        if (game.seats[1] === null) {
+          game.seats[1] = {
+            id: `bot_1_${Date.now()}`,
+            name: botNames[1],
+            username: botNames[1],
+            isBot: true,
+            connected: true
+          };
+        }
+      }
+      game.startGame();
       this.broadcastState(roomId);
       this.checkBotTurn(roomId);
-    }, 3000);
+      return { success: true };
+    } else {
+      // Hokm: Auto fill open seats with AI bots if < 4 seats filled
+      for (let s = 0; s < 4; s++) {
+        if (game.seats[s] === null) {
+          game.seats[s] = {
+            id: `bot_${s}_${Date.now()}`,
+            name: botNames[s % botNames.length],
+            username: botNames[s % botNames.length],
+            isBot: true,
+            connected: true
+          };
+        }
+      }
+      game.startCutHakem();
+      this.broadcastState(roomId);
 
-    return { success: true };
+      setTimeout(() => {
+        game.startNewRound();
+        this.broadcastState(roomId);
+        this.checkBotTurn(roomId);
+      }, 3000);
+
+      return { success: true };
+    }
   }
 
+  // --- COUP GAMEPLAY ACTIONS ---
+  coupDeclareAction(socket, roomId, actionType, targetSeat) {
+    if (!this.rooms.has(roomId)) return { success: false, message: 'Room not found' };
+    const roomData = this.rooms.get(roomId);
+    if (roomData.gameType !== 'COUP') return { success: false, message: 'Not a Coup room' };
+
+    const seat = roomData.playerSockets.get(socket.id);
+    if (seat === undefined) return { success: false, message: 'Not in room' };
+
+    const result = roomData.game.declareAction(seat, actionType, targetSeat);
+    this.broadcastState(roomId);
+    this.checkBotTurn(roomId);
+    return result;
+  }
+
+  coupSubmitResponse(socket, roomId, responseType, claimRole) {
+    if (!this.rooms.has(roomId)) return { success: false, message: 'Room not found' };
+    const roomData = this.rooms.get(roomId);
+    if (roomData.gameType !== 'COUP') return { success: false, message: 'Not a Coup room' };
+
+    const seat = roomData.playerSockets.get(socket.id);
+    if (seat === undefined) return { success: false, message: 'Not in room' };
+
+    const result = roomData.game.submitResponse(seat, responseType, claimRole);
+    this.broadcastState(roomId);
+    this.checkBotTurn(roomId);
+    return result;
+  }
+
+  coupSelectLoss(socket, roomId, cardId) {
+    if (!this.rooms.has(roomId)) return { success: false, message: 'Room not found' };
+    const roomData = this.rooms.get(roomId);
+    if (roomData.gameType !== 'COUP') return { success: false, message: 'Not a Coup room' };
+
+    const seat = roomData.playerSockets.get(socket.id);
+    if (seat === undefined) return { success: false, message: 'Not in room' };
+
+    const result = roomData.game.selectInfluenceToLose(seat, cardId);
+    this.broadcastState(roomId);
+    this.checkBotTurn(roomId);
+    return result;
+  }
+
+  coupSelectExchange(socket, roomId, keptCardIds) {
+    if (!this.rooms.has(roomId)) return { success: false, message: 'Room not found' };
+    const roomData = this.rooms.get(roomId);
+    if (roomData.gameType !== 'COUP') return { success: false, message: 'Not a Coup room' };
+
+    const seat = roomData.playerSockets.get(socket.id);
+    if (seat === undefined) return { success: false, message: 'Not in room' };
+
+    const result = roomData.game.selectExchangeKeep(seat, keptCardIds);
+    this.broadcastState(roomId);
+    this.checkBotTurn(roomId);
+    return result;
+  }
+
+  // --- HOKM GAMEPLAY ACTIONS ---
   declareTrump(socket, roomId, suit) {
     if (!this.rooms.has(roomId)) return false;
     const roomData = this.rooms.get(roomId);
@@ -273,7 +398,6 @@ class RoomManager {
     const playResult = game.playCard(seat, cardId);
     if (!playResult.success) return playResult;
 
-    // If trick complete, delay clearing table so players can see the 4 cards played
     if (playResult.trickComplete) {
       this.broadcastState(roomId);
 
@@ -284,7 +408,6 @@ class RoomManager {
           this.checkBotTurn(roomId);
         } else if (game.state === 'ROUND_OVER') {
           this.broadcastState(roomId);
-          // Auto start next round after 4.5 seconds if game not over
           setTimeout(() => {
             if (game.state === 'ROUND_OVER') {
               game.startNewRound();
@@ -309,26 +432,41 @@ class RoomManager {
     const roomData = this.rooms.get(roomId);
     const game = roomData.game;
 
-    if (game.state === 'TRUMP_SELECTION') {
-      const hakemPlayer = game.seats[game.hakemSeat];
-      if (hakemPlayer && hakemPlayer.isBot) {
-        setTimeout(() => {
-          const trumpSuit = game.chooseBotTrump(game.hakemSeat);
-          game.setTrump(trumpSuit);
-          this.broadcastState(roomId);
-          this.checkBotTurn(roomId);
-        }, 1200);
+    if (roomData.gameType === 'COUP') {
+      // Trigger bot moves for Coup
+      for (let s = 0; s < game.maxSeats; s++) {
+        const seat = game.seats[s];
+        if (seat && seat.isBot && game.isSeatAlive(s)) {
+          setTimeout(() => {
+            if (!this.rooms.has(roomId)) return;
+            game.chooseBotMove(s);
+            this.broadcastState(roomId);
+          }, 1000 + Math.random() * 500);
+        }
       }
-    } else if (game.state === 'PLAYING') {
-      const turnPlayer = game.seats[game.currentTurn];
-      if (turnPlayer && turnPlayer.isBot) {
-        setTimeout(() => {
-          if (game.state !== 'PLAYING') return;
-          const botCard = game.chooseBotCard(game.currentTurn);
-          if (botCard) {
-            this.playCardInternal(roomId, game.currentTurn, botCard.id);
-          }
-        }, 1000 + Math.random() * 500);
+    } else {
+      // Hokm bots
+      if (game.state === 'TRUMP_SELECTION') {
+        const hakemPlayer = game.seats[game.hakemSeat];
+        if (hakemPlayer && hakemPlayer.isBot) {
+          setTimeout(() => {
+            const trumpSuit = game.chooseBotTrump(game.hakemSeat);
+            game.setTrump(trumpSuit);
+            this.broadcastState(roomId);
+            this.checkBotTurn(roomId);
+          }, 1200);
+        }
+      } else if (game.state === 'PLAYING') {
+        const turnPlayer = game.seats[game.currentTurn];
+        if (turnPlayer && turnPlayer.isBot) {
+          setTimeout(() => {
+            if (game.state !== 'PLAYING') return;
+            const botCard = game.chooseBotCard(game.currentTurn);
+            if (botCard) {
+              this.playCardInternal(roomId, game.currentTurn, botCard.id);
+            }
+          }, 1000 + Math.random() * 500);
+        }
       }
     }
   }
@@ -422,6 +560,7 @@ class RoomManager {
         const state = game.getPublicState(seatIndex);
         const seat = game.seats[seatIndex];
         state.mySeat = seatIndex;
+        state.gameType = roomData.gameType;
         state.isHost = (roomData.hostUsername && seat ? roomData.hostUsername === seat.username : roomData.hostId === socketId);
         socket.emit('game_state', state);
       }

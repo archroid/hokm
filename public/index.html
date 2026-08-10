@@ -58,6 +58,9 @@
           <i class="fa-solid fa-circle-user me-1 text-gold"></i>
           <span id="header-user-name">Player</span>
         </div>
+        <button id="btn-quit-game" class="btn btn-sm btn-outline-danger me-2" title="Quit Game">
+          <i class="fa-solid fa-right-from-bracket me-1"></i> Leave Room
+        </button>
         <button id="sound-toggle-btn" class="icon-btn" title="Toggle Sound">
           <i class="fa-solid fa-volume-high" id="sound-icon"></i>
         </button>
@@ -109,6 +112,23 @@
               <button id="btn-logout" class="btn btn-sm btn-outline ms-2"><i class="fa-solid fa-right-from-bracket me-1"></i> Logout</button>
             </div>
 
+            <!-- GAME MODE SELECTOR -->
+            <div class="game-mode-selector mt-3">
+              <label class="section-label text-muted small">SELECT GAME MODE:</label>
+              <div class="mode-cards-grid mt-2">
+                <div class="mode-card active" id="mode-card-hokm" data-mode="HOKM">
+                  <div class="mode-icon">👑</div>
+                  <div class="mode-title">Iranian Hokm</div>
+                  <div class="mode-desc">4 Players • Trick-taking</div>
+                </div>
+                <div class="mode-card" id="mode-card-coup" data-mode="COUP">
+                  <div class="mode-icon">🗡️</div>
+                  <div class="mode-title">Coup (کودتا)</div>
+                  <div class="mode-desc">2-6 Players • Bluffing & Deception</div>
+                </div>
+              </div>
+            </div>
+
             <div class="action-buttons mt-4">
               <button id="btn-create-room" class="btn btn-gold btn-large">
                 <i class="fa-solid fa-plus me-2"></i> Create New Room
@@ -133,42 +153,59 @@
             <div class="room-share-box" id="share-link-box">
               <span>Code: <strong id="lobby-code-display">---</strong></span>
               <button class="btn btn-sm btn-outline" id="btn-copy-link"><i class="fa-solid fa-copy me-1"></i> Copy Link</button>
+              <button class="btn btn-sm btn-outline-danger ms-2" id="btn-leave-lobby"><i class="fa-solid fa-door-open me-1"></i> Leave Lobby</button>
             </div>
           </div>
 
-          <p class="lobby-subtitle">Game starts when all 4 seats are occupied (You can add AI bots for open seats!).</p>
+          <p class="lobby-subtitle" id="lobby-subtitle-text">Play with any number of players! Open seats are automatically filled with AI bots when starting.</p>
 
-          <div class="seats-grid">
+          <div class="seats-grid" id="lobby-seats-grid">
             <!-- Seat 0: Host (South) -->
             <div class="seat-card team-a" id="lobby-seat-0">
-              <div class="seat-team-tag">Team 1 (South)</div>
+              <div class="seat-team-tag">Seat 1</div>
               <div class="seat-avatar"><i class="fa-solid fa-user-tie"></i></div>
               <div class="seat-name" id="lobby-seat-0-name">Waiting...</div>
               <div class="seat-action" id="lobby-seat-0-action"></div>
             </div>
 
-            <!-- Seat 2: Partner (North) -->
-            <div class="seat-card team-a" id="lobby-seat-2">
-              <div class="seat-team-tag">Team 1 (North - Partner)</div>
-              <div class="seat-avatar"><i class="fa-solid fa-user"></i></div>
-              <div class="seat-name" id="lobby-seat-2-name">Waiting...</div>
-              <div class="seat-action" id="lobby-seat-2-action"></div>
-            </div>
-
             <!-- Seat 1: Opponent 1 (East) -->
             <div class="seat-card team-b" id="lobby-seat-1">
-              <div class="seat-team-tag">Team 2 (East)</div>
+              <div class="seat-team-tag">Seat 2</div>
               <div class="seat-avatar"><i class="fa-solid fa-user"></i></div>
               <div class="seat-name" id="lobby-seat-1-name">Waiting...</div>
               <div class="seat-action" id="lobby-seat-1-action"></div>
             </div>
 
+            <!-- Seat 2: Partner (North) -->
+            <div class="seat-card team-a" id="lobby-seat-2">
+              <div class="seat-team-tag">Seat 3</div>
+              <div class="seat-avatar"><i class="fa-solid fa-user"></i></div>
+              <div class="seat-name" id="lobby-seat-2-name">Waiting...</div>
+              <div class="seat-action" id="lobby-seat-2-action"></div>
+            </div>
+
             <!-- Seat 3: Opponent 2 (West) -->
             <div class="seat-card team-b" id="lobby-seat-3">
-              <div class="seat-team-tag">Team 2 (West)</div>
+              <div class="seat-team-tag">Seat 4</div>
               <div class="seat-avatar"><i class="fa-solid fa-user"></i></div>
               <div class="seat-name" id="lobby-seat-3-name">Waiting...</div>
               <div class="seat-action" id="lobby-seat-3-action"></div>
+            </div>
+
+            <!-- Seat 4 (Coup) -->
+            <div class="seat-card team-a hidden" id="lobby-seat-4">
+              <div class="seat-team-tag">Seat 5</div>
+              <div class="seat-avatar"><i class="fa-solid fa-user"></i></div>
+              <div class="seat-name" id="lobby-seat-4-name">Waiting...</div>
+              <div class="seat-action" id="lobby-seat-4-action"></div>
+            </div>
+
+            <!-- Seat 5 (Coup) -->
+            <div class="seat-card team-b hidden" id="lobby-seat-5">
+              <div class="seat-team-tag">Seat 6</div>
+              <div class="seat-avatar"><i class="fa-solid fa-user"></i></div>
+              <div class="seat-name" id="lobby-seat-5-name">Waiting...</div>
+              <div class="seat-action" id="lobby-seat-5-action"></div>
             </div>
           </div>
 
@@ -260,12 +297,58 @@
             <button class="chat-chip" data-msg="دمت گرم 👏">دمت گرم 👏</button>
           </div>
         </div>
+      <!-- VIEW 4: COUP GAME TABLE -->
+      <section id="view-coup-table" class="view-panel hidden">
+        <div class="table-container coup-table-layout">
+          <div class="coup-status-header">
+            <div class="coup-status-msg" id="coup-status-msg">Waiting for turn...</div>
+            <div class="coup-action-log" id="coup-action-log">Action log...</div>
+          </div>
+
+          <!-- COUP 6-SEATS GRID -->
+          <div class="coup-seats-grid" id="coup-seats-grid">
+            <!-- 6 Seat cards rendered dynamically -->
+          </div>
+
+          <!-- COUP ACTION CONTROL PANEL (ACTIVE TURN) -->
+          <div class="coup-controls-panel hidden" id="coup-turn-controls">
+            <div class="coup-panel-title">⭐ YOUR TURN — Choose Action:</div>
+            <div class="coup-action-buttons">
+              <button class="coup-btn btn-income" data-action="INCOME"><i class="fa-solid fa-coins me-1"></i> Income (+1 🪙)</button>
+              <button class="coup-btn btn-foreign" data-action="FOREIGN_AID"><i class="fa-solid fa-hand-holding-dollar me-1"></i> Foreign Aid (+2 🪙)</button>
+              <button class="coup-btn btn-coup" data-action="COUP"><i class="fa-solid fa-skull me-1"></i> Coup (7 🪙)</button>
+              <button class="coup-btn btn-tax" data-action="TAX"><i class="fa-solid fa-crown me-1"></i> Tax (Duke +3 🪙)</button>
+              <button class="coup-btn btn-assassinate" data-action="ASSASSINATE"><i class="fa-solid fa-khanda me-1"></i> Assassinate (3 🪙)</button>
+              <button class="coup-btn btn-steal" data-action="STEAL"><i class="fa-solid fa-mask me-1"></i> Steal (Captain +2 🪙)</button>
+              <button class="coup-btn btn-exchange" data-action="EXCHANGE"><i class="fa-solid fa-scroll me-1"></i> Exchange (Ambassador)</button>
+            </div>
+          </div>
+
+          <!-- COUP RESPONSE PANEL (CHALLENGE / BLOCK) -->
+          <div class="coup-controls-panel hidden" id="coup-response-controls">
+            <div class="coup-panel-title" id="coup-response-title">Action declared! Choose response:</div>
+            <div class="coup-action-buttons">
+              <button class="coup-btn btn-pass" id="btn-coup-pass"><i class="fa-solid fa-check me-1"></i> Pass / Accept</button>
+              <button class="coup-btn btn-challenge" id="btn-coup-challenge"><i class="fa-solid fa-bolt me-1"></i> Challenge!</button>
+              <div class="block-dropdown-wrapper">
+                <button class="coup-btn btn-block" id="btn-coup-block-toggle"><i class="fa-solid fa-shield-halved me-1"></i> Block Action</button>
+                <div class="block-roles-dropdown hidden" id="coup-block-dropdown">
+                  <button class="block-role-btn" data-role="DUKE">Claim Duke 👑 (Block Foreign Aid)</button>
+                  <button class="block-role-btn" data-role="CONTESSA">Claim Contessa 🛡️ (Block Assassinate)</button>
+                  <button class="block-role-btn" data-role="CAPTAIN">Claim Captain ⚔️ (Block Steal)</button>
+                  <button class="block-role-btn" data-role="AMBASSADOR">Claim Ambassador 📜 (Block Steal)</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </section>
 
     </main>
   </div>
 
-  <!-- MODAL 1: HAKEM TRUMP SELECTION MODAL -->
+  <!-- MODAL: HAKEM TRUMP SELECTION MODAL -->
   <div id="modal-trump-select" class="modal-overlay hidden">
     <div class="modal-card glass-panel text-center pulse-glow">
       <div class="modal-header">
@@ -295,7 +378,7 @@
     </div>
   </div>
 
-  <!-- MODAL 2: ROUND OVER MODAL -->
+  <!-- MODAL: ROUND OVER MODAL -->
   <div id="modal-round-over" class="modal-overlay hidden">
     <div class="modal-card glass-panel text-center">
       <h2 id="round-result-title">ROUND WON!</h2>
@@ -308,15 +391,49 @@
     </div>
   </div>
 
-  <!-- MODAL 3: GAME OVER / MATCH WINNER MODAL -->
+  <!-- MODAL: GAME OVER / MATCH WINNER MODAL -->
   <div id="modal-game-over" class="modal-overlay hidden">
     <div class="modal-card glass-panel text-center trophy-card">
       <div class="trophy-icon">🏆</div>
       <h1 id="game-over-title">VICTORY!</h1>
-      <p id="game-over-desc">Team 1 won the match 7 - 3!</p>
+      <p id="game-over-desc">Team 1 won the match!</p>
       <button class="btn btn-gold btn-large mt-4" onclick="location.reload()">
         <i class="fa-solid fa-rotate-right me-2"></i> Play Again
       </button>
+    </div>
+  </div>
+
+  <!-- MODAL: COUP TARGET SELECTION MODAL -->
+  <div id="modal-coup-target" class="modal-overlay hidden">
+    <div class="modal-card glass-panel text-center">
+      <h2 id="coup-target-modal-title">SELECT TARGET PLAYER</h2>
+      <div class="target-players-grid mt-3" id="coup-target-list">
+        <!-- Target player buttons -->
+      </div>
+      <button class="btn btn-outline mt-3" id="btn-cancel-target">Cancel</button>
+    </div>
+  </div>
+
+  <!-- MODAL: COUP INFLUENCE LOSS MODAL -->
+  <div id="modal-coup-loss" class="modal-overlay hidden">
+    <div class="modal-card glass-panel text-center">
+      <h2 class="text-danger">LOSE INFLUENCE</h2>
+      <p>Choose one of your influence cards to reveal and lose:</p>
+      <div class="card-loss-grid mt-3" id="coup-loss-cards">
+        <!-- Cards to lose -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: COUP AMBASSADOR EXCHANGE MODAL -->
+  <div id="modal-coup-exchange" class="modal-overlay hidden">
+    <div class="modal-card glass-panel text-center">
+      <h2>AMBASSADOR EXCHANGE</h2>
+      <p id="exchange-modal-tip">Select cards to KEEP:</p>
+      <div class="exchange-cards-grid mt-3" id="coup-exchange-cards">
+        <!-- Exchange cards -->
+      </div>
+      <button class="btn btn-gold mt-4" id="btn-confirm-exchange" disabled>Confirm Exchange</button>
     </div>
   </div>
 
@@ -329,3 +446,4 @@
   <script src="js/app.js"></script>
 </body>
 </html>
+

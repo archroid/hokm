@@ -39,13 +39,13 @@ io.on('connection', (socket) => {
   });
 
   // Lobby actions
-  socket.on('create_room', ({ token }, callback) => {
+  socket.on('create_room', ({ token, gameType }, callback) => {
     const auth = authManager.verifySession(token);
     if (!auth.valid) {
       if (typeof callback === 'function') callback({ success: false, message: 'Account required to play. Please login first.' });
       return;
     }
-    const res = roomManager.createRoom(socket, auth.username);
+    const res = roomManager.createRoom(socket, auth.username, gameType || 'HOKM');
     if (typeof callback === 'function') callback({ success: true, ...res });
   });
 
@@ -69,6 +69,11 @@ io.on('connection', (socket) => {
     if (typeof callback === 'function') callback(res);
   });
 
+  socket.on('leave_room', ({ roomId }, callback) => {
+    const res = roomManager.leaveRoom(socket, roomId);
+    if (typeof callback === 'function') callback(res);
+  });
+
   socket.on('add_bot', ({ roomId, seatIndex }) => {
     roomManager.addBot(socket, roomId, seatIndex);
   });
@@ -82,13 +87,34 @@ io.on('connection', (socket) => {
     if (typeof callback === 'function') callback(res);
   });
 
-  // Gameplay actions
+  // Hokm Gameplay actions
   socket.on('declare_trump', ({ roomId, suit }) => {
     roomManager.declareTrump(socket, roomId, suit);
   });
 
   socket.on('play_card', ({ roomId, cardId }, callback) => {
     const res = roomManager.playCard(socket, roomId, cardId);
+    if (typeof callback === 'function') callback(res);
+  });
+
+  // Coup Gameplay actions
+  socket.on('coup_declare_action', ({ roomId, actionType, targetSeat }, callback) => {
+    const res = roomManager.coupDeclareAction(socket, roomId, actionType, targetSeat);
+    if (typeof callback === 'function') callback(res);
+  });
+
+  socket.on('coup_submit_response', ({ roomId, responseType, claimRole }, callback) => {
+    const res = roomManager.coupSubmitResponse(socket, roomId, responseType, claimRole);
+    if (typeof callback === 'function') callback(res);
+  });
+
+  socket.on('coup_select_loss', ({ roomId, cardId }, callback) => {
+    const res = roomManager.coupSelectLoss(socket, roomId, cardId);
+    if (typeof callback === 'function') callback(res);
+  });
+
+  socket.on('coup_select_exchange', ({ roomId, keptCardIds }, callback) => {
+    const res = roomManager.coupSelectExchange(socket, roomId, keptCardIds);
     if (typeof callback === 'function') callback(res);
   });
 
@@ -104,5 +130,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`👑 Iranian Hokm Game Server running on http://localhost:${PORT}`);
+  console.log(`👑 Iranian Hokm & Coup Multi-Game Server running on http://localhost:${PORT}`);
 });

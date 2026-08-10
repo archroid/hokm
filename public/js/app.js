@@ -1,5 +1,5 @@
 /**
- * Hokm Online Frontend Application Logic with User Accounts & Reconnection Support
+ * Hokm & Coup Multi-Game Frontend Application Logic
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -10,9 +10,13 @@ document.addEventListener('DOMContentLoaded', () => {
   let mySeatIndex = 0;
   let isHost = false;
   let gameState = null;
+  let gameType = 'HOKM'; // 'HOKM' or 'COUP'
+  let selectedGameMode = 'HOKM';
   let sessionToken = localStorage.getItem('hokm_session_token') || '';
   let currentUser = localStorage.getItem('hokm_user_name') || '';
-  let authMode = 'login'; // 'login' or 'register'
+  let authMode = 'login';
+  let selectedExchangeCardIds = [];
+  let pendingActionType = null;
 
   // Auth Elements
   const authSection = document.getElementById('auth-section');
@@ -27,6 +31,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const headerUserName = document.getElementById('header-user-name');
   const btnLogout = document.getElementById('btn-logout');
 
+  // Mode Selector Elements
+  const modeCardHokm = document.getElementById('mode-card-hokm');
+  const modeCardCoup = document.getElementById('mode-card-coup');
+
   // Lobby & Room Elements
   const inputRoomCode = document.getElementById('input-room-code');
   const btnCreateRoom = document.getElementById('btn-create-room');
@@ -35,35 +43,90 @@ document.addEventListener('DOMContentLoaded', () => {
   const viewLanding = document.getElementById('view-landing');
   const viewRoomLobby = document.getElementById('view-room-lobby');
   const viewGameTable = document.getElementById('view-game-table');
+  const viewCoupTable = document.getElementById('view-coup-table');
   const gameHeader = document.getElementById('game-header');
 
   const displayRoomCode = document.getElementById('display-room-code');
   const lobbyCodeDisplay = document.getElementById('lobby-code-display');
   const btnCopyLink = document.getElementById('btn-copy-link');
+  const btnLeaveLobby = document.getElementById('btn-leave-lobby');
+  const btnQuitGame = document.getElementById('btn-quit-game');
   const roomCodeBadge = document.getElementById('room-code-badge');
   const btnStartGame = document.getElementById('btn-start-game');
 
-  const trumpDisplay = document.getElementById('trump-display');
-  const trumpIconSymbol = document.getElementById('trump-icon-symbol');
+  function quitCurrentRoom() {
+    if (!currentRoomId) {
+      showView('view-landing');
+      return;
+    }
+    if (confirm('Are you sure you want to leave the room?')) {
+      socket.emit('leave_room', { roomId: currentRoomId }, () => {
+        currentRoomId = null;
+        localStorage.removeItem('hokm_room_id');
+        showView('view-landing');
+      });
+    }
+  }
+
+  if (btnQuitGame) btnQuitGame.addEventListener('click', quitCurrentRoom);
+  if (btnLeaveLobby) btnLeaveLobby.addEventListener('click', quitCurrentRoom);
+
+  // Hokm Table Elements
   const scoreUs = document.getElementById('score-us');
   const scoreThem = document.getElementById('score-them');
   const tricksUs = document.getElementById('tricks-us');
   const tricksThem = document.getElementById('tricks-them');
-
+  const trumpIconSymbol = document.getElementById('trump-icon-symbol');
   const modalTrumpSelect = document.getElementById('modal-trump-select');
   const modalRoundOver = document.getElementById('modal-round-over');
   const modalGameOver = document.getElementById('modal-game-over');
-
   const myHandContainer = document.getElementById('my-hand-container');
   const tableStatusMsg = document.getElementById('table-status-msg');
 
-  // Check URL query parameters for auto-join room code (e.g. ?room=ABCD)
+  // Coup Table Elements
+  const coupStatusMsg = document.getElementById('coup-status-msg');
+  const coupActionLog = document.getElementById('coup-action-log');
+  const coupSeatsGrid = document.getElementById('coup-seats-grid');
+  const coupTurnControls = document.getElementById('coup-turn-controls');
+  const coupResponseControls = document.getElementById('coup-response-controls');
+  const coupResponseTitle = document.getElementById('coup-response-title');
+  const btnCoupPass = document.getElementById('btn-coup-pass');
+  const btnCoupChallenge = document.getElementById('btn-coup-challenge');
+  const btnCoupBlockToggle = document.getElementById('btn-coup-block-toggle');
+  const coupBlockDropdown = document.getElementById('coup-block-dropdown');
+
+  // Coup Modals
+  const modalCoupTarget = document.getElementById('modal-coup-target');
+  const coupTargetList = document.getElementById('coup-target-list');
+  const btnCancelTarget = document.getElementById('btn-cancel-target');
+
+  const modalCoupLoss = document.getElementById('modal-coup-loss');
+  const coupLossCards = document.getElementById('coup-loss-cards');
+
+  const modalCoupExchange = document.getElementById('modal-coup-exchange');
+  const coupExchangeCards = document.getElementById('coup-exchange-cards');
+  const btnConfirmExchange = document.getElementById('btn-confirm-exchange');
+
+  // Check URL query parameters for auto-join room code
   const urlParams = new URLSearchParams(window.location.search);
   const roomParam = urlParams.get('room');
   if (roomParam) {
     inputRoomCode.value = roomParam.toUpperCase();
     currentRoomId = roomParam.toUpperCase();
   }
+
+  // --- GAME MODE TOGGLE ---
+  modeCardHokm.addEventListener('click', () => {
+    selectedGameMode = 'HOKM';
+    modeCardHokm.classList.add('active');
+    modeCardCoup.classList.remove('active');
+  });
+
+  modeCardCoup.addEventListener('click', () => {
+    selectedGameMode = 'COUP';
+    modeCardCoup.classList.add('active');
+    modeCardHokm.classList.remove('active');
+  });
 
   // --- AUTHENTICATION HANDLERS ---
   tabLogin.addEventListener('click', () => switchAuthTab('login'));
@@ -123,7 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
     roomActionsSection.classList.remove('hidden');
     hideAuthAlert();
 
-    // Auto attempt room reconnect if room ID exists
     if (currentRoomId) {
       attemptRoomReconnect(currentRoomId);
     }
@@ -160,7 +222,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res && res.valid) {
         onAuthSuccess(sessionToken, res.username);
       } else {
-        // Invalid session token, clear
         sessionToken = '';
         localStorage.removeItem('hokm_session_token');
       }
@@ -180,6 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res && res.success) {
         currentRoomId = res.roomId;
         mySeatIndex = res.seatIndex;
+        gameType = res.gameType || 'HOKM';
         updateUrlRoomCode(currentRoomId);
         saveRoomId(currentRoomId);
       }
@@ -193,10 +255,11 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    socket.emit('create_room', { token: sessionToken }, (res) => {
+    socket.emit('create_room', { token: sessionToken, gameType: selectedGameMode }, (res) => {
       if (res.success) {
         currentRoomId = res.roomId;
         mySeatIndex = res.seatIndex;
+        gameType = res.gameType || selectedGameMode;
         isHost = true;
         saveRoomId(currentRoomId);
         updateUrlRoomCode(currentRoomId);
@@ -222,6 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res.success) {
         currentRoomId = res.roomId;
         mySeatIndex = res.seatIndex;
+        gameType = res.gameType || 'HOKM';
         saveRoomId(currentRoomId);
         updateUrlRoomCode(currentRoomId);
         showView('view-room-lobby');
@@ -257,12 +321,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // --- SOCKET EVENT LISTENERS ---
+  // --- SOCKET GAME STATE LISTENER ---
   socket.on('game_state', (state) => {
     gameState = state;
     mySeatIndex = state.mySeat;
     isHost = state.isHost;
     currentRoomId = state.roomId;
+    gameType = state.gameType || 'HOKM';
     saveRoomId(currentRoomId);
 
     displayRoomCode.textContent = currentRoomId;
@@ -271,9 +336,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state.state === 'LOBBY') {
       showView('view-room-lobby');
       renderLobby(state);
+    } else if (gameType === 'COUP') {
+      showView('view-coup-table');
+      renderCoupGameTable(state);
     } else {
       showView('view-game-table');
-      renderGameTable(state);
+      renderHokmGameTable(state);
     }
   });
 
@@ -284,12 +352,21 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- RENDER LOBBY ---
   function renderLobby(state) {
     let filledCount = 0;
+    const maxSeats = state.gameType === 'COUP' ? 6 : 4;
 
-    for (let s = 0; s < 4; s++) {
+    for (let s = 0; s < 6; s++) {
+      const cardEl = document.getElementById(`lobby-seat-${s}`);
+      if (!cardEl) continue;
+
+      if (s >= maxSeats) {
+        cardEl.classList.add('hidden');
+        continue;
+      }
+      cardEl.classList.remove('hidden');
+
       const seatData = state.seats[s];
       const nameEl = document.getElementById(`lobby-seat-${s}-name`);
       const actionEl = document.getElementById(`lobby-seat-${s}-action`);
-      const cardEl = document.getElementById(`lobby-seat-${s}`);
 
       if (seatData) {
         filledCount++;
@@ -318,10 +395,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (isHost) {
-      btnStartGame.disabled = filledCount < 4;
-      document.getElementById('host-start-tip').textContent = filledCount < 4
-        ? 'Fill all 4 seats (or add bots) to start.'
-        : 'Ready to play! Click Start Hokm Game.';
+      btnStartGame.disabled = false;
+      document.getElementById('host-start-tip').textContent = 'Ready to play! Click Start Game anytime (Open seats will be auto-filled with AI bots).';
     } else {
       btnStartGame.style.display = 'none';
       document.getElementById('host-start-tip').textContent = 'Waiting for host to start the game...';
@@ -336,13 +411,250 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.emit('remove_seat', { roomId: currentRoomId, seatIndex });
   };
 
-  // --- RENDER GAME TABLE ---
-  function renderGameTable(state) {
-    // Relative seat mapping:
-    // Bottom: mySeat
-    // Right: (mySeat + 1) % 4
-    // Top: (mySeat + 2) % 4
-    // Left: (mySeat + 3) % 4
+  // --- RENDER COUP GAME TABLE ---
+  function renderCoupGameTable(state) {
+    // Render Status Header & Action Log
+    if (state.state === 'PLAYING') {
+      const turnSeat = state.seats[state.currentTurn];
+      const name = turnSeat ? turnSeat.name : 'Player';
+      coupStatusMsg.textContent = state.currentTurn === mySeatIndex ? '⭐ IT IS YOUR TURN!' : `Waiting for ${name}'s move...`;
+    } else if (state.state === 'ACTION_RESPONSE') {
+      const actorName = state.seats[state.currentAction.actorSeat] ? state.seats[state.currentAction.actorSeat].name : 'Player';
+      coupStatusMsg.textContent = `${actorName} declared ${state.currentAction.actionType}! Challenge or Block?`;
+    } else if (state.state === 'BLOCK_RESPONSE') {
+      const blockerName = state.seats[state.currentBlock.blockerSeat] ? state.seats[state.currentBlock.blockerSeat].name : 'Blocker';
+      coupStatusMsg.textContent = `${blockerName} claimed ${state.currentBlock.claimedRole} to Block! Challenge Block?`;
+    } else if (state.state === 'INFLUENCE_LOSS') {
+      const loserName = state.seats[state.pendingLossPlayer.seatIndex] ? state.seats[state.pendingLossPlayer.seatIndex].name : 'Player';
+      coupStatusMsg.textContent = `${loserName} must choose an influence card to reveal!`;
+    } else if (state.state === 'CARD_EXCHANGE') {
+      coupStatusMsg.textContent = `Ambassador Exchange in progress...`;
+    } else if (state.state === 'GAME_OVER') {
+      const winnerName = state.seats[state.winnerSeat] ? state.seats[state.winnerSeat].name : 'Player';
+      coupStatusMsg.textContent = `👑 ${winnerName} WON THE COUP GAME!`;
+    }
+
+    // Action Log
+    if (state.actionLog && state.actionLog.length > 0) {
+      coupActionLog.textContent = state.actionLog[state.actionLog.length - 1];
+    }
+
+    // Render 6 Seats Grid
+    coupSeatsGrid.innerHTML = '';
+    state.seats.forEach((seat, idx) => {
+      const seatCard = document.createElement('div');
+      seatCard.className = `coup-seat-card ${state.currentTurn === idx && state.state === 'PLAYING' ? 'active-turn' : ''} ${!seat.isAlive ? 'dead-player' : ''}`;
+
+      const offlineTag = (seat.connected === false && !seat.isBot) ? '<span class="offline-tag ms-2"><i class="fa-solid fa-wifi-slash"></i> Offline</span>' : '';
+      const meBadge = idx === mySeatIndex ? ' <span class="badge text-gold">(You)</span>' : '';
+
+      let cardsHtml = '';
+      if (seat.cards && seat.cards.length > 0) {
+        seat.cards.forEach(c => {
+          if (c.revealed) {
+            cardsHtml += `
+              <div class="coup-card-item revealed-card">
+                <div class="card-role-icon">${c.icon || '❌'}</div>
+                <div class="card-role-name">${c.name || c.role}</div>
+                <span class="badge bg-danger text-white mt-1" style="font-size:0.65rem;">REVEALED</span>
+              </div>
+            `;
+          } else if (idx === mySeatIndex) {
+            cardsHtml += `
+              <div class="coup-card-item">
+                <div class="card-role-icon">${c.icon || '❓'}</div>
+                <div class="card-role-name" style="color:${c.color || '#fff'}">${c.name || c.role}</div>
+              </div>
+            `;
+          } else {
+            cardsHtml += `
+              <div class="coup-card-item hidden-card">
+                <div class="card-role-icon">🎴</div>
+                <div class="card-role-name text-muted">Influence</div>
+              </div>
+            `;
+          }
+        });
+      }
+
+      seatCard.innerHTML = `
+        <div class="coup-player-info">
+          <span class="coup-player-name">${seat.name}${seat.isBot ? ' 🤖' : ''}${meBadge}${offlineTag}</span>
+          <span class="coup-coin-badge">🪙 ${seat.coins}</span>
+        </div>
+        <div class="coup-cards-container">${cardsHtml}</div>
+      `;
+
+      coupSeatsGrid.appendChild(seatCard);
+    });
+
+    // Handle Turn Controls (Action Selection)
+    const isMyTurn = state.currentTurn === mySeatIndex && state.state === 'PLAYING' && state.seats[mySeatIndex].isAlive;
+    if (isMyTurn) {
+      coupTurnControls.classList.remove('hidden');
+    } else {
+      coupTurnControls.classList.add('hidden');
+    }
+
+    // Handle Response Controls (Challenge / Block)
+    const isResponsePhase = (state.state === 'ACTION_RESPONSE' || state.state === 'BLOCK_RESPONSE');
+    let canRespond = false;
+    if (isResponsePhase && state.seats[mySeatIndex] && state.seats[mySeatIndex].isAlive) {
+      if (state.state === 'ACTION_RESPONSE' && state.currentAction.actorSeat !== mySeatIndex) {
+        canRespond = true;
+      } else if (state.state === 'BLOCK_RESPONSE' && state.currentBlock.blockerSeat !== mySeatIndex) {
+        canRespond = true;
+      }
+    }
+
+    if (canRespond) {
+      coupResponseControls.classList.remove('hidden');
+      coupResponseTitle.textContent = state.state === 'ACTION_RESPONSE'
+        ? `Action Declared! Choose your response:`
+        : `Block Declared! Challenge the Block?`;
+    } else {
+      coupResponseControls.classList.add('hidden');
+    }
+
+    // Handle Coup Modals
+    handleCoupModals(state);
+  }
+
+  // --- COUP ACTION & RESPONSE BUTTON LISTENERS ---
+  document.querySelectorAll('#coup-turn-controls .coup-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      if (!action) return;
+
+      if (action === 'COUP' || action === 'ASSASSINATE' || action === 'STEAL') {
+        pendingActionType = action;
+        openTargetModal(action);
+      } else {
+        socket.emit('coup_declare_action', { roomId: currentRoomId, actionType: action });
+      }
+    });
+  });
+
+  function openTargetModal(action) {
+    if (!gameState) return;
+    coupTargetList.innerHTML = '';
+    const aliveTargets = gameState.seats.filter(s => s && s.isAlive && s.seatIndex !== mySeatIndex);
+
+    if (aliveTargets.length === 0) {
+      alert('No valid target players available!');
+      return;
+    }
+
+    aliveTargets.forEach(t => {
+      const btn = document.createElement('button');
+      btn.className = 'target-player-btn';
+      btn.innerHTML = `
+        <span style="font-size:1.1rem;">${t.name}</span>
+        <span class="text-muted small">🪙 ${t.coins} Coins</span>
+      `;
+      btn.addEventListener('click', () => {
+        socket.emit('coup_declare_action', { roomId: currentRoomId, actionType: pendingActionType, targetSeat: t.seatIndex });
+        modalCoupTarget.classList.add('hidden');
+      });
+      coupTargetList.appendChild(btn);
+    });
+
+    modalCoupTarget.classList.remove('hidden');
+  }
+
+  btnCancelTarget.addEventListener('click', () => {
+    modalCoupTarget.classList.add('hidden');
+  });
+
+  btnCoupPass.addEventListener('click', () => {
+    socket.emit('coup_submit_response', { roomId: currentRoomId, responseType: 'PASS' });
+  });
+
+  btnCoupChallenge.addEventListener('click', () => {
+    socket.emit('coup_submit_response', { roomId: currentRoomId, responseType: 'CHALLENGE' });
+  });
+
+  btnCoupBlockToggle.addEventListener('click', () => {
+    coupBlockDropdown.classList.toggle('hidden');
+  });
+
+  document.querySelectorAll('.block-role-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const role = btn.dataset.role;
+      coupBlockDropdown.classList.add('hidden');
+      socket.emit('coup_submit_response', { roomId: currentRoomId, responseType: 'BLOCK', claimRole: role });
+    });
+  });
+
+  function handleCoupModals(state) {
+    // Influence Loss Modal
+    if (state.state === 'INFLUENCE_LOSS' && state.pendingLossPlayer && state.pendingLossPlayer.seatIndex === mySeatIndex) {
+      modalCoupLoss.classList.remove('hidden');
+      coupLossCards.innerHTML = '';
+
+      const mySeatInfo = state.seats[mySeatIndex];
+      const unrevealedCards = mySeatInfo.cards.filter(c => !c.revealed);
+
+      unrevealedCards.forEach(c => {
+        const btn = document.createElement('button');
+        btn.className = 'loss-card-btn';
+        btn.innerHTML = `
+          <span style="font-size:2rem;">${c.icon}</span>
+          <span style="color:${c.color}">${c.name}</span>
+        `;
+        btn.addEventListener('click', () => {
+          socket.emit('coup_select_loss', { roomId: currentRoomId, cardId: c.id });
+          modalCoupLoss.classList.add('hidden');
+        });
+        coupLossCards.appendChild(btn);
+      });
+    } else {
+      modalCoupLoss.classList.add('hidden');
+    }
+
+    // Exchange Modal
+    if (state.state === 'CARD_EXCHANGE' && state.exchangeCards) {
+      modalCoupExchange.classList.remove('hidden');
+      coupExchangeCards.innerHTML = '';
+      selectedExchangeCardIds = [];
+
+      const choices = state.exchangeCards;
+      const unrevealedCount = state.seats[mySeatIndex].cards.filter(c => !c.revealed).length;
+      document.getElementById('exchange-modal-tip').textContent = `Choose exactly ${unrevealedCount} card(s) to KEEP:`;
+
+      choices.forEach(c => {
+        const cardDiv = document.createElement('div');
+        cardDiv.className = 'exchange-card-item';
+        cardDiv.innerHTML = `
+          <span style="font-size:2rem;">${c.icon}</span>
+          <span style="color:${c.color}">${c.name}</span>
+        `;
+
+        cardDiv.addEventListener('click', () => {
+          if (selectedExchangeCardIds.includes(c.id)) {
+            selectedExchangeCardIds = selectedExchangeCardIds.filter(id => id !== c.id);
+            cardDiv.classList.remove('selected');
+          } else if (selectedExchangeCardIds.length < unrevealedCount) {
+            selectedExchangeCardIds.push(c.id);
+            cardDiv.classList.add('selected');
+          }
+          btnConfirmExchange.disabled = selectedExchangeCardIds.length !== unrevealedCount;
+        });
+
+        coupExchangeCards.appendChild(cardDiv);
+      });
+
+      btnConfirmExchange.onclick = () => {
+        socket.emit('coup_select_exchange', { roomId: currentRoomId, keptCardIds: selectedExchangeCardIds });
+        modalCoupExchange.classList.add('hidden');
+      };
+    } else {
+      modalCoupExchange.classList.add('hidden');
+    }
+  }
+
+  // --- RENDER HOKM GAME TABLE ---
+  function renderHokmGameTable(state) {
     const seatPositions = {
       bottom: mySeatIndex,
       right: (mySeatIndex + 1) % 4,
@@ -350,7 +662,6 @@ document.addEventListener('DOMContentLoaded', () => {
       left: (mySeatIndex + 3) % 4
     };
 
-    // Update Seat Badges & Names
     for (const [pos, seatIdx] of Object.entries(seatPositions)) {
       const seatInfo = state.seats[seatIdx];
       const seatEl = document.getElementById(`player-seat-${pos}`);
@@ -389,7 +700,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Update Scores
     const myTeam = mySeatIndex % 2;
     const oppTeam = 1 - myTeam;
 
@@ -398,7 +708,6 @@ document.addEventListener('DOMContentLoaded', () => {
     tricksUs.textContent = `(${state.tricksWon[myTeam]})`;
     tricksThem.textContent = `(${state.tricksWon[oppTeam]})`;
 
-    // Update Trump Suit Display
     if (state.trumpSuit) {
       const suitInfo = getSuitSymbolAndColor(state.trumpSuit);
       trumpIconSymbol.textContent = suitInfo.symbol;
@@ -408,18 +717,13 @@ document.addEventListener('DOMContentLoaded', () => {
       trumpIconSymbol.className = 'trump-icon';
     }
 
-    // Render Played Cards in Table Center
     renderCenterPlayedCards(state.currentTrick, seatPositions);
 
-    // Render Hand
     const isMyTurn = state.currentTurn === mySeatIndex && state.state === 'PLAYING' && state.currentTrick.length < 4;
     renderHandCards(state.hand, state.validCardIds || [], isMyTurn, state.state);
 
-    // Update Status Banner
-    updateStatusBanner(state);
-
-    // Handle Modals
-    handleModals(state);
+    updateHokmStatusBanner(state);
+    handleHokmModals(state);
   }
 
   function renderCenterPlayedCards(currentTrick, seatPositions) {
@@ -430,7 +734,6 @@ document.addEventListener('DOMContentLoaded', () => {
       right: document.getElementById('played-slot-right')
     };
 
-    // Clear previous
     for (const slot of Object.values(slots)) {
       slot.innerHTML = '';
     }
@@ -515,7 +818,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return val.toString();
   }
 
-  function updateStatusBanner(state) {
+  function updateHokmStatusBanner(state) {
     if (state.state === 'CUTTING_HAKEM') {
       const lastCut = state.cutCardLog[state.cutCardLog.length - 1];
       if (lastCut) {
@@ -544,15 +847,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function handleModals(state) {
-    // Trump Selection Modal
+  function handleHokmModals(state) {
     if (state.state === 'TRUMP_SELECTION' && state.hakemSeat === mySeatIndex) {
       modalTrumpSelect.classList.remove('hidden');
     } else {
       modalTrumpSelect.classList.add('hidden');
     }
 
-    // Round Over Modal
     if (state.state === 'ROUND_OVER' && state.roundWinner) {
       modalRoundOver.classList.remove('hidden');
       const myTeam = mySeatIndex % 2;
@@ -565,7 +866,6 @@ document.addEventListener('DOMContentLoaded', () => {
       modalRoundOver.classList.add('hidden');
     }
 
-    // Game Over Modal
     if (state.state === 'GAME_OVER' && state.matchWinner !== null) {
       modalGameOver.classList.remove('hidden');
       const myTeam = mySeatIndex % 2;
@@ -607,7 +907,6 @@ document.addEventListener('DOMContentLoaded', () => {
     popup.className = 'chat-bubble-popup';
     popup.textContent = message;
 
-    // Position bubble over seat
     const seatPositions = {
       bottom: mySeatIndex,
       right: (mySeatIndex + 1) % 4,
@@ -638,7 +937,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // View Switcher
   function showView(viewId) {
-    [viewLanding, viewRoomLobby, viewGameTable].forEach(v => v.classList.add('hidden'));
+    [viewLanding, viewRoomLobby, viewGameTable, viewCoupTable].forEach(v => v.classList.add('hidden'));
 
     if (viewId === 'view-landing') {
       viewLanding.classList.remove('hidden');
@@ -648,6 +947,9 @@ document.addEventListener('DOMContentLoaded', () => {
       gameHeader.classList.add('hidden');
     } else if (viewId === 'view-game-table') {
       viewGameTable.classList.remove('hidden');
+      gameHeader.classList.remove('hidden');
+    } else if (viewId === 'view-coup-table') {
+      viewCoupTable.classList.remove('hidden');
       gameHeader.classList.remove('hidden');
     }
   }

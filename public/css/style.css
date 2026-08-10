@@ -51,6 +51,21 @@ body {
 .text-gold { color: var(--gold-primary); }
 .text-muted { color: var(--text-muted); }
 
+/* Spacing Utilities */
+.w-100 { width: 100% !important; }
+.mt-1 { margin-top: 0.25rem !important; }
+.mt-2 { margin-top: 0.5rem !important; }
+.mt-3 { margin-top: 1rem !important; }
+.mt-4 { margin-top: 1.5rem !important; }
+.mb-1 { margin-bottom: 0.25rem !important; }
+.mb-2 { margin-bottom: 0.5rem !important; }
+.mb-3 { margin-bottom: 1rem !important; }
+.mb-4 { margin-bottom: 1.5rem !important; }
+.ms-1 { margin-left: 0.25rem !important; }
+.ms-2 { margin-left: 0.5rem !important; }
+.me-1 { margin-right: 0.25rem !important; }
+.me-2 { margin-right: 0.5rem !important; }
+
 /* Buttons */
 .btn {
   font-family: var(--font-body);
@@ -91,8 +106,15 @@ body {
 }
 
 .btn-large {
-  padding: 1rem 2.2rem;
-  font-size: 1.15rem;
+  padding: 0.9rem 1.8rem;
+  font-size: 1.08rem;
+  width: 100%;
+}
+
+.btn-sm {
+  padding: 0.35rem 0.85rem;
+  font-size: 0.82rem;
+  border-radius: 8px;
 }
 
 .btn-outline {
@@ -102,6 +124,17 @@ body {
 }
 .btn-outline:hover {
   background: rgba(243, 198, 73, 0.2);
+  transform: translateY(-1px);
+}
+
+.btn-outline-danger {
+  background: rgba(225, 29, 72, 0.08);
+  border: 1px solid #e11d48;
+  color: #fca5a5;
+}
+.btn-outline-danger:hover {
+  background: rgba(225, 29, 72, 0.25);
+  color: #fff;
   transform: translateY(-1px);
 }
 
@@ -891,11 +924,12 @@ body {
 .user-welcome-box {
   background: rgba(243, 198, 73, 0.08);
   border: 1px solid rgba(243, 198, 73, 0.25);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 0.75rem 1.2rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 1.2rem;
 }
 
 .user-profile-badge {
@@ -930,13 +964,313 @@ body {
 }
 
 
-@media (max-width: 768px) {
-  .poker-table {
-    width: 96vw;
-    height: 48vh;
-    border-width: 6px;
-    border-radius: 140px;
-  }
+/* Game Mode Selector */
+.game-mode-selector {
+  margin: 1.25rem 0;
+  text-align: left;
+}
+
+.mode-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+.mode-card {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(243, 198, 73, 0.2);
+  border-radius: 12px;
+  padding: 0.9rem 0.6rem;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 125px;
+}
+
+.mode-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--gold-primary);
+  box-shadow: 0 4px 15px rgba(243, 198, 73, 0.2);
+}
+
+.mode-card.active {
+  background: linear-gradient(135deg, rgba(243, 198, 73, 0.25) 0%, rgba(180, 83, 9, 0.3) 100%);
+  border: 2px solid var(--gold-primary);
+  box-shadow: 0 0 20px rgba(243, 198, 73, 0.35);
+}
+
+.mode-icon {
+  font-size: 2.2rem;
+  margin-bottom: 0.3rem;
+  line-height: 1;
+}
+
+.mode-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--gold-light);
+  line-height: 1.2;
+}
+
+.mode-desc {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  margin-top: 0.3rem;
+  line-height: 1.25;
+}
+
+/* Coup Table Layout */
+.coup-table-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.coup-status-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.coup-status-msg {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--gold-primary);
+  text-shadow: 0 0 10px rgba(243, 198, 73, 0.5);
+  margin-bottom: 0.4rem;
+}
+
+.coup-action-log {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  max-width: 800px;
+  width: 100%;
+  text-align: center;
+}
+
+.coup-seats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.2rem;
+  flex: 1;
+}
+
+.coup-seat-card {
+  background: rgba(13, 22, 33, 0.85);
+  border: 1px solid rgba(243, 198, 73, 0.2);
+  border-radius: 14px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.coup-seat-card.active-turn {
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 25px rgba(243, 198, 73, 0.5);
+}
+
+.coup-seat-card.dead-player {
+  opacity: 0.45;
+  filter: grayscale(0.8);
+}
+
+.coup-player-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 0.8rem;
+}
+
+.coup-player-name {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--text-light);
+}
+
+.coup-coin-badge {
+  background: linear-gradient(135deg, #f59e0b 0%, #b45309 100%);
+  color: #fff;
+  font-weight: 800;
+  padding: 0.3rem 0.8rem;
+  border-radius: 16px;
+  font-size: 0.95rem;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.4);
+}
+
+.coup-cards-container {
+  display: flex;
+  gap: 0.8rem;
+}
+
+.coup-card-item {
+  width: 100px;
+  height: 140px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  text-align: center;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.coup-card-item.hidden-card {
+  background: linear-gradient(145deg, #2d3748 0%, #1a202c 100%);
+  border-color: rgba(243, 198, 73, 0.3);
+}
+
+.coup-card-item.revealed-card {
+  border: 2px solid #ef4444;
+  opacity: 0.7;
+}
+
+.card-role-icon {
+  font-size: 2.2rem;
+  margin-bottom: 0.3rem;
+}
+
+.card-role-name {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+/* Coup Control Panel */
+.coup-controls-panel {
+  background: rgba(13, 22, 33, 0.95);
+  border: 1px solid var(--gold-primary);
+  border-radius: 16px;
+  padding: 1.2rem;
+  margin-top: 1rem;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+}
+
+.coup-panel-title {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--gold-primary);
+  margin-bottom: 0.8rem;
+}
+
+.coup-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.coup-btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: white;
+}
+
+.coup-btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.15);
+}
+
+.btn-income { background: #3b82f6; }
+.btn-foreign { background: #06b6d4; }
+.btn-coup { background: #ef4444; font-weight: 800; }
+.btn-tax { background: #f59e0b; }
+.btn-assassinate { background: #dc2626; }
+.btn-steal { background: #2563eb; }
+.btn-exchange { background: #10b981; }
+.btn-pass { background: #64748b; }
+.btn-challenge { background: #a855f7; font-weight: 700; }
+.btn-block { background: #ea580c; }
+
+.block-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.block-roles-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 6px;
+  background: #0f172a;
+  border: 1px solid var(--gold-primary);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+}
+
+.block-role-btn {
+  padding: 0.6rem 1rem;
+  background: transparent;
+  border: none;
+  color: white;
+  text-align: left;
+  font-weight: 600;
+  cursor: pointer;
+}
+.block-role-btn:hover {
+  background: rgba(243, 198, 73, 0.2);
+  color: var(--gold-primary);
+}
+
+.target-player-btn, .loss-card-btn, .exchange-card-item {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(243, 198, 73, 0.3);
+  border-radius: 10px;
+  padding: 0.8rem 1.2rem;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0.4rem;
+}
+
+.target-player-btn:hover, .loss-card-btn:hover, .exchange-card-item:hover {
+  border-color: var(--gold-primary);
+  background: rgba(243, 198, 73, 0.2);
+}
+
+.exchange-card-item.selected {
+  border: 2px solid var(--gold-primary);
+  background: rgba(243, 198, 73, 0.35);
+  box-shadow: 0 0 15px rgba(243, 198, 73, 0.5);
+}
+
   .seat-position-left { left: -10px; }
   .seat-position-right { right: -10px; }
   
