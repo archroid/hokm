@@ -59,7 +59,13 @@ class HokmGame {
 
   // Determine valid cards for a player given the current lead suit
   getValidCards(seatIndex) {
+    if (this.state !== 'PLAYING' || this.currentTrick.length >= 4) {
+      return [];
+    }
+
     const hand = this.hands[seatIndex];
+    if (!hand || hand.length === 0) return [];
+
     if (this.currentTrick.length === 0) {
       return hand; // Lead player can play any card
     }
@@ -154,6 +160,7 @@ class HokmGame {
 
   playCard(seatIndex, cardId) {
     if (this.state !== 'PLAYING') return { success: false, message: 'Game not in playing state' };
+    if (this.currentTrick.length >= 4) return { success: false, message: 'Current trick is complete and clearing' };
     if (this.currentTurn !== seatIndex) return { success: false, message: 'Not your turn' };
 
     const hand = this.hands[seatIndex];

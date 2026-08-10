@@ -260,7 +260,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCenterPlayedCards(state.currentTrick, seatPositions);
 
     // Render Hand
-    renderHandCards(state.hand, state.validCardIds, state.currentTurn === mySeatIndex && state.state === 'PLAYING');
+    const isMyTurn = state.currentTurn === mySeatIndex && state.state === 'PLAYING' && state.currentTrick.length < 4;
+    renderHandCards(state.hand, state.validCardIds || [], isMyTurn);
 
     // Update Status Banner
     updateStatusBanner(state);
@@ -298,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function renderHandCards(hand, validCardIds, isMyTurn) {
+  function renderHandCards(hand, validCardIds, isMyTurn, gameStateType) {
     myHandContainer.innerHTML = '';
 
     hand.forEach(card => {
@@ -311,6 +312,8 @@ document.addEventListener('DOMContentLoaded', () => {
           window.soundCtrl.playCardSlide();
           socket.emit('play_card', { roomId: currentRoomId, cardId: card.id });
         });
+      } else if (gameStateType === 'TRUMP_SELECTION') {
+        cardEl.classList.add('trump-preview');
       } else {
         cardEl.classList.add('disabled');
       }
