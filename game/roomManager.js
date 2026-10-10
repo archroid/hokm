@@ -205,10 +205,21 @@ class RoomManager {
     return { success: true };
   }
 
+  isSocketHost(socket, roomData) {
+    if (roomData.hostId === socket.id) return true;
+    for (const seat of roomData.game.seats) {
+      if (seat && seat.id === socket.id && seat.username && roomData.hostUsername &&
+          seat.username.toLowerCase() === roomData.hostUsername.toLowerCase()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   addBot(hostSocket, roomId, seatIndex) {
     if (!this.rooms.has(roomId)) return false;
     const roomData = this.rooms.get(roomId);
-    if (roomData.hostId !== hostSocket.id) return false;
+    if (!this.isSocketHost(hostSocket, roomData)) return false;
 
     const game = roomData.game;
     if (game.state !== 'LOBBY') return false;
@@ -233,15 +244,20 @@ class RoomManager {
   removePlayerOrBot(hostSocket, roomId, seatIndex) {
     if (!this.rooms.has(roomId)) return false;
     const roomData = this.rooms.get(roomId);
-    if (roomData.hostId !== hostSocket.id) return false;
+    if (!this.isSocketHost(hostSocket, roomData)) return false;
 
     const game = roomData.game;
     if (game.state !== 'LOBBY') return false;
 
     const maxSeats = roomData.gameType === 'COUP' ? 6 : 4;
-    if (seatIndex >= 0 && seatIndex < maxSeats && seatIndex !== 0) { // Can't remove host
+    if (seatIndex >= 0 && seatIndex < maxSeats) {
       const seat = game.seats[seatIndex];
       if (seat) {
+        // Can't remove host
+        if (seat.id === hostSocket.id || (seat.username && roomData.hostUsername && seat.username.toLowerCase() === roomData.hostUsername.toLowerCase())) {
+          return false;
+        }
+
         if (!seat.isBot) {
           if (seat.username) {
             this.userRoomMap.delete(seat.username.toLowerCase());
@@ -258,11 +274,106 @@ class RoomManager {
     return false;
   }
 
+  swapSeats(hostSocket, roomId, seatA, seatB) {
+    if (!this.rooms.has(roomId)) return { success: false, message: 'Room not found' };
+    const roomData = this.rooms.get(roomId);
+    if (!this.isSocketHost(hostSocket, roomData)) {
+      return { success: false, message: 'Only host can change seats' };
+    }
+
+    const game = roomData.game;
+    if (game.state !== 'LOBBY') {
+      return { success: false, message: 'Can only change seats in lobby' };
+    }
+
+    const maxSeats = roomData.gameType === 'COUP' ? 6 : 4;
+    if (seatA < 0 || seatA >= maxSeats || seatB < 0 || seatB >= maxSeats || seatA === seatB) {
+      return { success: false, message: 'Invalid seat numbers' };
+    }
+
+    this.swapSeatsInternal(roomData, seatA, seatB);
+    this.broadcastState(roomId);
+    return { success: true };
+  }
+
+  swapSeatsInternal(roomData, seatA, seatB) {
+    const game = roomData.game;
+    const temp = game.seats[seatA];
+    game.seats[seatA] = game.seats[seatB];
+    game.seats[seatB] = temp;
+
+    // Update playerSockets mapping: socketId -> seatIndex
+    for (const [sId, sIdx] of roomData.playerSockets.entries()) {
+      if (sIdx === seatA) {
+        roomData.playerSockets.set(sId, seatB);
+      } else if (sIdx === seatB) {
+        roomData.playerSockets.set(sId, seatA);
+      }
+    }
+
+    // Update userRoomMap mapping: usernameKey -> { roomId, seatIndex }
+    if (game.seats[seatA] && game.seats[seatA].username && !game.seats[seatA].isBot) {
+      this.userRoomMap.set(game.seats[seatA].username.toLowerCase(), { roomId: roomData.roomId, seatIndex: seatA });
+    }
+    if (game.seats[seatB] && game.seats[seatB].username && !game.seats[seatB].isBot) {
+      this.userRoomMap.set(game.seats[seatB].username.toLowerCase(), { roomId: roomData.roomId, seatIndex: seatB });
+    }
+  }
+
+  shuffleTeammates(hostSocket, roomId) {
+    if (!this.rooms.has(roomId)) return { success: false, message: 'Room not found' };
+    const roomData = this.rooms.get(roomId);
+    if (!this.isSocketHost(hostSocket, roomData)) {
+      return { success: false, message: 'Only host can shuffle teams' };
+    }
+
+    const game = roomData.game;
+    if (game.state !== 'LOBBY') {
+      return { success: false, message: 'Can only change teams in lobby' };
+    }
+
+    if (roomData.gameType !== 'HOKM') {
+      return { success: false, message: 'Teams are only in Hokm' };
+    }
+
+    // In Hokm, seats 1, 2, 3 are the other 3 players.
+    // Randomly choose partner for seat 0 among seats 1, 2, 3 (placed at seat 2).
+    const candidates = [1, 2, 3];
+    const chosenPartnerSeat = candidates[Math.floor(Math.random() * candidates.length)];
+    if (chosenPartnerSeat !== 2) {
+      this.swapSeatsInternal(roomData, chosenPartnerSeat, 2);
+    }
+    // Optionally swap the other two seats with 50% chance
+    if (Math.random() > 0.5) {
+      this.swapSeatsInternal(roomData, 1, 3);
+    }
+
+    this.broadcastState(roomId);
+    return { success: true };
+  }
+
+  playAgain(socket, roomId) {
+    if (!roomId || !this.rooms.has(roomId)) return { success: false, message: 'Room not found' };
+    const roomData = this.rooms.get(roomId);
+    const game = roomData.game;
+
+    if (game.state !== 'GAME_OVER') {
+      return { success: false, message: 'Game is not over yet' };
+    }
+
+    // Reset game engine state
+    game.resetToLobby();
+
+    // Broadcast new LOBBY state to all connected players
+    this.broadcastState(roomId);
+    return { success: true };
+  }
+
   startGame(hostSocket, roomId) {
     if (!this.rooms.has(roomId)) return { success: false, message: 'Room not found' };
     const roomData = this.rooms.get(roomId);
 
-    if (roomData.hostId !== hostSocket.id) {
+    if (!this.isSocketHost(hostSocket, roomData)) {
       return { success: false, message: 'Only host can start the game' };
     }
 

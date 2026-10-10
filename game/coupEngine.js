@@ -508,6 +508,20 @@ class CoupGame {
       }))
     };
   }
+
+  resetToLobby() {
+    this.state = 'LOBBY';
+    this.coins = new Array(this.maxSeats).fill(0);
+    this.influences = new Array(this.maxSeats).fill(null);
+    this.deck = [];
+    this.winnerSeat = null;
+    this.currentAction = null;
+    this.currentBlock = null;
+    this.pendingResponses.clear();
+    this.pendingLossPlayer = null;
+    this.exchangeCards = null;
+    this.actionLog = [];
+  }
 }
 
 module.exports = { CoupGame, ROLES, ACTION_TYPES };

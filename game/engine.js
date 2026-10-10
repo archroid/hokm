@@ -412,6 +412,22 @@ class HokmGame {
         : []
     };
   }
+
+  resetToLobby() {
+    this.state = 'LOBBY';
+    this.matchScores = [0, 0];
+    this.tricksWon = [0, 0];
+    this.roundWinner = null;
+    this.matchWinner = null;
+    this.currentTrick = [];
+    this.leadSuit = null;
+    this.trumpSuit = null;
+    this.hands = [[], [], [], []];
+    this.cutCardLog = [];
+    this.hakemSeat = 0;
+    this.dealerSeat = 3;
+    this.currentTurn = 0;
+  }
 }
 
 module.exports = { HokmGame, Card, SUITS, VALUES };

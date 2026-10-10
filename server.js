@@ -82,8 +82,23 @@ io.on('connection', (socket) => {
     roomManager.removePlayerOrBot(socket, roomId, seatIndex);
   });
 
+  socket.on('swap_seats', ({ roomId, seatA, seatB }, callback) => {
+    const res = roomManager.swapSeats(socket, roomId, seatA, seatB);
+    if (typeof callback === 'function') callback(res);
+  });
+
+  socket.on('shuffle_teammates', ({ roomId }, callback) => {
+    const res = roomManager.shuffleTeammates(socket, roomId);
+    if (typeof callback === 'function') callback(res);
+  });
+
   socket.on('start_game', ({ roomId }, callback) => {
     const res = roomManager.startGame(socket, roomId);
+    if (typeof callback === 'function') callback(res);
+  });
+
+  socket.on('play_again', ({ roomId }, callback) => {
+    const res = roomManager.playAgain(socket, roomId);
     if (typeof callback === 'function') callback(res);
   });
 

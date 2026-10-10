@@ -353,6 +353,18 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderLobby(state) {
     let filledCount = 0;
     const maxSeats = state.gameType === 'COUP' ? 6 : 4;
+    const isHokm = state.gameType === 'HOKM';
+
+    const lobbyTeamsBar = document.getElementById('lobby-teams-bar');
+    const teamsBarActions = document.getElementById('teams-bar-actions');
+    if (lobbyTeamsBar) {
+      if (isHokm) {
+        lobbyTeamsBar.classList.remove('hidden');
+        if (teamsBarActions) teamsBarActions.style.display = isHost ? 'flex' : 'none';
+      } else {
+        lobbyTeamsBar.classList.add('hidden');
+      }
+    }
 
     for (let s = 0; s < 6; s++) {
       const cardEl = document.getElementById(`lobby-seat-${s}`);
@@ -365,8 +377,24 @@ document.addEventListener('DOMContentLoaded', () => {
       cardEl.classList.remove('hidden');
 
       const seatData = state.seats[s];
+      const tagEl = document.getElementById(`lobby-seat-${s}-tag`);
       const nameEl = document.getElementById(`lobby-seat-${s}-name`);
       const actionEl = document.getElementById(`lobby-seat-${s}-action`);
+
+      // Update team tag
+      if (tagEl) {
+        if (isHokm) {
+          if (s === 0) {
+            tagEl.innerHTML = `<span class="badge-team-1"><i class="fa-solid fa-crown me-1 text-gold"></i> Team 1 • Host</span>`;
+          } else if (s === 2) {
+            tagEl.innerHTML = `<span class="badge-team-1"><i class="fa-solid fa-user-group me-1"></i> Team 1 • Partner</span>`;
+          } else if (s === 1 || s === 3) {
+            tagEl.innerHTML = `<span class="badge-team-2"><i class="fa-solid fa-shield-halved me-1"></i> Team 2 • Opponent</span>`;
+          }
+        } else {
+          tagEl.textContent = `Seat ${s + 1}`;
+        }
+      }
 
       if (seatData) {
         filledCount++;
@@ -375,8 +403,44 @@ document.addEventListener('DOMContentLoaded', () => {
         const offlineSuffix = seatData.connected === false ? ' ⚠️ (Offline)' : '';
         nameEl.textContent = seatData.name + (seatData.isBot ? ' 🤖' : '') + offlineSuffix;
 
-        if (isHost && s !== 0) {
-          actionEl.innerHTML = `<button class="btn btn-sm btn-outline text-muted" onclick="removeSeat(${s})"><i class="fa-solid fa-user-minus"></i> Remove</button>`;
+        if (isHost) {
+          if (isHokm) {
+            if (s === 0) {
+              actionEl.innerHTML = `<span class="badge text-gold mb-1"><i class="fa-solid fa-crown me-1"></i> Host</span>`;
+            } else if (s === 2) {
+              actionEl.innerHTML = `
+                <div class="seat-btn-group">
+                  <button class="btn btn-sm btn-outline-gold" onclick="openSwapMenu(2)" title="Swap teammate with another seat"><i class="fa-solid fa-arrow-right-arrow-left me-1"></i> Swap</button>
+                  <button class="btn btn-sm btn-outline text-muted" onclick="removeSeat(2)" title="Remove"><i class="fa-solid fa-user-minus"></i></button>
+                </div>
+              `;
+            } else {
+              actionEl.innerHTML = `
+                <div class="seat-btn-group">
+                  <button class="btn btn-sm btn-gold btn-make-partner" onclick="swapSeats(${s}, 2)" title="Make this player your teammate"><i class="fa-solid fa-user-check me-1"></i> Make Partner</button>
+                  <button class="btn btn-sm btn-outline text-muted" onclick="openSwapMenu(${s})" title="Swap seat"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
+                  <button class="btn btn-sm btn-outline text-muted" onclick="removeSeat(${s})" title="Remove"><i class="fa-solid fa-user-minus"></i></button>
+                </div>
+              `;
+            }
+          } else {
+            // Coup
+            if (s === 0) {
+              actionEl.innerHTML = `
+                <div class="seat-btn-group">
+                  <span class="badge text-gold"><i class="fa-solid fa-crown me-1"></i> Host</span>
+                  <button class="btn btn-sm btn-outline text-muted" onclick="openSwapMenu(0)" title="Swap seat"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
+                </div>
+              `;
+            } else {
+              actionEl.innerHTML = `
+                <div class="seat-btn-group">
+                  <button class="btn btn-sm btn-outline text-muted" onclick="openSwapMenu(${s})" title="Swap seat"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
+                  <button class="btn btn-sm btn-outline text-muted" onclick="removeSeat(${s})"><i class="fa-solid fa-user-minus"></i> Remove</button>
+                </div>
+              `;
+            }
+          }
         } else {
           actionEl.innerHTML = seatData.connected === false
             ? `<span class="badge text-danger"><i class="fa-solid fa-wifi-slash me-1"></i> Disconnected</span>`
@@ -387,7 +451,12 @@ document.addEventListener('DOMContentLoaded', () => {
         nameEl.textContent = 'Empty Seat';
 
         if (isHost) {
-          actionEl.innerHTML = `<button class="btn btn-sm btn-gold" onclick="addBot(${s})"><i class="fa-solid fa-robot me-1"></i> Add Bot</button>`;
+          actionEl.innerHTML = `
+            <div class="seat-btn-group">
+              <button class="btn btn-sm btn-gold" onclick="addBot(${s})"><i class="fa-solid fa-robot me-1"></i> Add Bot</button>
+              <button class="btn btn-sm btn-outline text-muted" onclick="openSwapMenu(${s})" title="Move empty seat"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
+            </div>
+          `;
         } else {
           actionEl.innerHTML = `<span class="text-muted small">Waiting...</span>`;
         }
@@ -395,6 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (isHost) {
+      btnStartGame.style.display = 'inline-flex';
       btnStartGame.disabled = false;
       document.getElementById('host-start-tip').textContent = 'Ready to play! Click Start Game anytime (Open seats will be auto-filled with AI bots).';
     } else {
@@ -403,13 +473,105 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Global helper window functions for bot buttons
+  // Global helper window functions for bot and seat actions
   window.addBot = function(seatIndex) {
     socket.emit('add_bot', { roomId: currentRoomId, seatIndex });
   };
   window.removeSeat = function(seatIndex) {
     socket.emit('remove_seat', { roomId: currentRoomId, seatIndex });
   };
+  window.swapSeats = function(seatA, seatB) {
+    if (!currentRoomId) return;
+    socket.emit('swap_seats', { roomId: currentRoomId, seatA, seatB }, (res) => {
+      if (res && !res.success) {
+        alert(res.message || 'Could not change seats.');
+      }
+    });
+  };
+  window.openSwapMenu = function(seatIndex) {
+    if (!gameState) return;
+    const modalSwapSeats = document.getElementById('modal-swap-seats');
+    const swapModalTitle = document.getElementById('swap-modal-title');
+    const swapSeatsList = document.getElementById('swap-seats-list');
+    if (!modalSwapSeats || !swapSeatsList) return;
+
+    const maxSeats = gameState.gameType === 'COUP' ? 6 : 4;
+    const curSeat = gameState.seats[seatIndex];
+    const curName = curSeat ? curSeat.name : 'Empty';
+
+    swapModalTitle.textContent = `Swap Seat ${seatIndex + 1} (${curName}) With:`;
+    swapSeatsList.innerHTML = '';
+
+    for (let i = 0; i < maxSeats; i++) {
+      if (i === seatIndex) continue;
+      const targetSeat = gameState.seats[i];
+      const targetName = targetSeat ? targetSeat.name + (targetSeat.isBot ? ' 🤖' : '') : 'Empty Seat';
+      const teamLabel = gameState.gameType === 'HOKM'
+        ? (i % 2 === 0 ? ' [Team 1]' : ' [Team 2]')
+        : '';
+
+      const btn = document.createElement('button');
+      btn.className = 'target-player-btn';
+      btn.innerHTML = `
+        <span style="font-size:1.05rem;">Seat ${i + 1}${teamLabel}</span>
+        <span class="text-gold small">${targetName}</span>
+      `;
+      btn.addEventListener('click', () => {
+        window.swapSeats(seatIndex, i);
+        modalSwapSeats.classList.add('hidden');
+      });
+      swapSeatsList.appendChild(btn);
+    }
+
+    modalSwapSeats.classList.remove('hidden');
+  };
+
+  const btnCancelSwap = document.getElementById('btn-cancel-swap');
+  if (btnCancelSwap) {
+    btnCancelSwap.addEventListener('click', () => {
+      const modalSwapSeats = document.getElementById('modal-swap-seats');
+      if (modalSwapSeats) modalSwapSeats.classList.add('hidden');
+    });
+  }
+
+  const btnShuffleTeams = document.getElementById('btn-shuffle-teams');
+  if (btnShuffleTeams) {
+    btnShuffleTeams.addEventListener('click', () => {
+      if (!currentRoomId) return;
+      socket.emit('shuffle_teammates', { roomId: currentRoomId }, (res) => {
+        if (res && !res.success) {
+          alert(res.message || 'Could not shuffle teams.');
+        }
+      });
+    });
+  }
+
+  const btnSwapOpponents = document.getElementById('btn-swap-opponents');
+  if (btnSwapOpponents) {
+    btnSwapOpponents.addEventListener('click', () => {
+      window.swapSeats(1, 3);
+    });
+  }
+
+  // Play Again & Game Over Leave listeners
+  const btnPlayAgain = document.getElementById('btn-play-again');
+  if (btnPlayAgain) {
+    btnPlayAgain.addEventListener('click', () => {
+      if (!currentRoomId) return;
+      btnPlayAgain.disabled = true;
+      socket.emit('play_again', { roomId: currentRoomId }, (res) => {
+        btnPlayAgain.disabled = false;
+        if (!res || !res.success) {
+          alert(res ? res.message : 'Could not restart game.');
+        }
+      });
+    });
+  }
+
+  const btnGameOverLeave = document.getElementById('btn-game-over-leave');
+  if (btnGameOverLeave) {
+    btnGameOverLeave.addEventListener('click', quitCurrentRoom);
+  }
 
   // --- RENDER COUP GAME TABLE ---
   function renderCoupGameTable(state) {
@@ -650,6 +812,23 @@ document.addEventListener('DOMContentLoaded', () => {
       };
     } else {
       modalCoupExchange.classList.add('hidden');
+    }
+
+    // Coup Game Over Modal
+    if (state.state === 'GAME_OVER' && state.winnerSeat !== null && state.winnerSeat !== undefined) {
+      modalGameOver.classList.remove('hidden');
+      const isWinner = state.winnerSeat === mySeatIndex;
+      const winnerName = state.seats[state.winnerSeat] ? state.seats[state.winnerSeat].name : 'Player';
+      if (isWinner) {
+        window.soundCtrl.playMatchWin();
+        document.getElementById('game-over-title').textContent = '👑 VICTORY!';
+        document.getElementById('game-over-desc').textContent = `Congratulations! You survived and won the Coup game!`;
+      } else {
+        document.getElementById('game-over-title').textContent = 'GAME OVER';
+        document.getElementById('game-over-desc').textContent = `${winnerName} won the Coup game.`;
+      }
+    } else if (state.state !== 'GAME_OVER') {
+      modalGameOver.classList.add('hidden');
     }
   }
 
@@ -935,8 +1114,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function hideAllModals() {
+    [modalTrumpSelect, modalRoundOver, modalGameOver, modalCoupTarget, modalCoupLoss, modalCoupExchange].forEach(m => {
+      if (m) m.classList.add('hidden');
+    });
+    const modalSwap = document.getElementById('modal-swap-seats');
+    if (modalSwap) modalSwap.classList.add('hidden');
+  }
+
   // View Switcher
   function showView(viewId) {
+    if (viewId === 'view-landing' || viewId === 'view-room-lobby') {
+      hideAllModals();
+    }
     [viewLanding, viewRoomLobby, viewGameTable, viewCoupTable].forEach(v => v.classList.add('hidden'));
 
     if (viewId === 'view-landing') {
